@@ -1,4 +1,5 @@
 use std::{error::Error, num::NonZeroU32};
+use glutin::api::glx;
 use glutin_winit::{DisplayBuilder, GlWindow};
 use winit::application::{ApplicationHandler};
 use winit::event_loop::EventLoop;
@@ -10,12 +11,13 @@ use glutin::{config::GetGlConfig, context::ContextAttributesBuilder, display::Ge
 use glutin::context::{PossiblyCurrentContext, NotCurrentContext, ContextApi};
 use glutin::surface::{WindowSurface, SwapInterval, Surface};
 use glutin::config::{Config, ConfigTemplateBuilder};
+use glow::*;
 
 const WINDOW_TITLE: &str = "gl-pong";
 
 pub struct App {
     template: ConfigTemplateBuilder,
-    renderer: Option<i32>, // TODO; implement renderer as type Renderer...
+    renderer: Option<Renderer>, // TODO; implement renderer as type Renderer...
     app_state: Option<AppState>, //TODO: implement AppState type
     gl_context: Option<PossiblyCurrentContext>,
     gl_display: GlDisplayCreationState,
@@ -100,6 +102,7 @@ impl ApplicationHandler for App {
         gl_context.make_current(&gl_surface);
 
         // TODO: can initialize renderer here...
+        self.renderer.get_or_insert_with(|| Renderer::new(&gl_config.display()));
 
         if let Err(res) = gl_surface.set_swap_interval(gl_context, SwapInterval::Wait(NonZeroU32::new(1).unwrap())) {
             eprintln!("Error setting vsync: {res:?}");
@@ -197,3 +200,54 @@ fn window_attributes() -> WindowAttributes {
             .with_transparent(false)
             .with_title(WINDOW_TITLE)
 }
+
+struct Renderer {
+    gl: Option<Context>,
+}
+
+impl Renderer {
+    fn new<D: GlDisplay>(gl_display: &D) -> Self {
+        unsafe{
+            let gl = glow::Context::from_loader_function_cstr(
+                |s| gl_display.get_proc_address(s)
+            );
+
+            Renderer {
+                gl: Some(gl),
+            }
+        }
+    }
+}
+
+#[rustfmt::skip]
+static VERTEX_DATA: [f32; 15] = [
+    -0.5, -0.5,  1.0,  0.0,  0.0,
+     0.0,  0.5,  0.0,  1.0,  0.0,
+     0.5, -0.5,  0.0,  0.0,  1.0,
+];
+
+const VERTEX_SHADER_SOURCE: &[u8] = b"
+#version 100
+precision mediump float;
+
+attribute vec2 position;
+attribute vec3 color;
+
+varying vec3 v_color;
+
+void main() {
+    gl_Position = vec4(position, 0.0, 1.0);
+    v_color = color;
+}
+\0";
+
+const FRAGMENT_SHADER_SOURCE: &[u8] = b"
+#version 100
+precision mediump float;
+
+varying vec3 v_color;
+
+void main() {
+    gl_FragColor = vec4(v_color, 1.0);
+}
+\0";
