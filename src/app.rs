@@ -1,6 +1,11 @@
 use std::{error::Error, num::NonZeroU32};
 use glutin_winit::{DisplayBuilder, GlWindow};
-use winit::{application::ApplicationHandler, event_loop::EventLoop, raw_window_handle::HasWindowHandle, window::{Window, WindowAttributes}};
+use winit::application::{ApplicationHandler};
+use winit::event_loop::EventLoop;
+use winit::event::{KeyEvent, WindowEvent};
+use winit:: window::{Window, WindowAttributes};
+use winit::raw_window_handle::HasWindowHandle;
+use winit::keyboard::{Key, NamedKey};
 use glutin::{config::GetGlConfig, context::ContextAttributesBuilder, display::GetGlDisplay, prelude::*};
 use glutin::context::{PossiblyCurrentContext, NotCurrentContext, ContextApi};
 use glutin::surface::{WindowSurface, SwapInterval, Surface};
@@ -101,7 +106,7 @@ impl ApplicationHandler for App {
         }
 
         assert!(self.app_state.replace(AppState {gl_surface, window}).is_none());
-    }
+}
 
 
     fn window_event(
@@ -110,11 +115,49 @@ impl ApplicationHandler for App {
             window_id: winit::window::WindowId,
             event: winit::event::WindowEvent,
         ) {
-        
+        println!("{:?}, {:?}", window_id, event);
+       match event {
+           WindowEvent::Resized(size) if size.width != 0 && size.height != 0 => {
+               if let Some(AppState { gl_surface, window: _}) = self.app_state.as_ref() {
+                   let gl_context = self.gl_context.as_ref().unwrap();
+                   gl_surface.resize(
+                       gl_context,
+                       NonZeroU32::new(size.width).unwrap(),
+                       NonZeroU32::new(size.height).unwrap(),
+                       );
+                   // let renderer = self.renderer.as_ref().unwrap();
+                   // renderer.resize(size.width as i32, size.height as i32);
+               }
+           },
+           WindowEvent::CloseRequested
+               | WindowEvent::KeyboardInput {
+                   event: KeyEvent { logical_key: Key::Named(NamedKey::Escape), .. },
+                   ..
+           } => event_loop.exit(),
+           _ => { },
+       } 
     }
     
     fn about_to_wait(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
-        
+       if let Some(AppState {gl_surface, window}) = self.app_state.as_ref() {
+           let gl_context = self.gl_context.as_ref().unwrap();
+           // let renderer = self.renderer.as_ref().unwrap();
+           window.request_redraw();
+
+           gl_surface.swap_buffers(gl_context).unwrap();
+       }
+    }
+    
+    fn exiting(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        let _gl_display = self.gl_context.take().unwrap().display();
+
+        self.app_state = None;
+        #[allow(irrefutable_let_patterns)]
+        if let glutin::display::Display::Egl(display) = _gl_display {
+            unsafe {
+                display.terminate();
+            }
+        }
     }
 }
 
@@ -150,7 +193,7 @@ fn create_gl_context(window: &Window, gl_config: &Config) -> NotCurrentContext {
 }
 
 fn window_attributes() -> WindowAttributes {
-    WindowAttributes::default()
+    Window::default_attributes()
             .with_transparent(false)
             .with_title(WINDOW_TITLE)
 }
