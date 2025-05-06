@@ -53,46 +53,46 @@ enum GlDisplayCreationState {
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
-       let (window, gl_config) = match &self.gl_display {
-           GlDisplayCreationState::Builder(display_builder) => {
-               let (window, gl_config) = match display_builder.clone().build(
-                       event_loop,
-                       self.template.clone(),
-                       gl_config_picker) {
-                   Ok((window, gl_config)) => (window.unwrap(), gl_config),
-                   Err(e) => {
-                       self.exit_state = Err(e);
-                       event_loop.exit();
-                       return;
-                   }
-               };
+        let (window, gl_config) = match &self.gl_display {
+            GlDisplayCreationState::Builder(display_builder) => {
+                let (window, gl_config) = match display_builder.clone().build(
+                    event_loop,
+                    self.template.clone(),
+                    gl_config_picker) {
+                    Ok((window, gl_config)) => (window.unwrap(), gl_config),
+                    Err(e) => {
+                        self.exit_state = Err(e);
+                        event_loop.exit();
+                        return;
+                    }
+                };
 
-               println!("Picked a config with {} samples", gl_config.num_samples());
-               self.gl_display = GlDisplayCreationState::Init;
-               
-               self.gl_context = Some(create_gl_context(&window, &gl_config).treat_as_possibly_current());
+                println!("Picked a config with {} samples", gl_config.num_samples());
+                self.gl_display = GlDisplayCreationState::Init;
 
-               (window, gl_config)
-           },
-           GlDisplayCreationState::Init => {
-               // not sure what this does right now?
-               println!("Need to recreate window in `resumed`");
-               let gl_config = self.gl_context.as_ref().as_ref().unwrap().config();
-               match glutin_winit::finalize_window(event_loop, window_attributes(), &gl_config) {
-                   Ok(window) => (window, gl_config),
-                   Err(e) => {
-                       self.exit_state = Err(e.into());
-                       event_loop.exit();
-                       return;
-                   }
-               }
-           }
-       };
+                self.gl_context = Some(create_gl_context(&window, &gl_config).treat_as_possibly_current());
+
+                (window, gl_config)
+            },
+            GlDisplayCreationState::Init => {
+                // not sure what this does right now?
+                println!("Need to recreate window in `resumed`");
+                let gl_config = self.gl_context.as_ref().as_ref().unwrap().config();
+                match glutin_winit::finalize_window(event_loop, window_attributes(), &gl_config) {
+                    Ok(window) => (window, gl_config),
+                    Err(e) => {
+                        self.exit_state = Err(e.into());
+                        event_loop.exit();
+                        return;
+                    }
+                }
+            }
+        };
 
 
-       let attrs = window
-           .build_surface_attributes(Default::default())
-           .expect("Failed to build surface attributes");
+        let attrs = window
+            .build_surface_attributes(Default::default())
+            .expect("Failed to build surface attributes");
 
         let gl_surface = unsafe {
             gl_config.display().create_window_surface(&gl_config, &attrs).unwrap()
@@ -109,48 +109,49 @@ impl ApplicationHandler for App {
         }
 
         assert!(self.app_state.replace(AppState {gl_surface, window}).is_none());
-}
+    }
 
 
     fn window_event(
-            &mut self,
-            event_loop: &winit::event_loop::ActiveEventLoop,
-            window_id: winit::window::WindowId,
-            event: winit::event::WindowEvent,
-        ) {
-        println!("{:?}, {:?}", window_id, event);
-       match event {
-           WindowEvent::Resized(size) if size.width != 0 && size.height != 0 => {
-               if let Some(AppState { gl_surface, window: _}) = self.app_state.as_ref() {
-                   let gl_context = self.gl_context.as_ref().unwrap();
-                   gl_surface.resize(
-                       gl_context,
-                       NonZeroU32::new(size.width).unwrap(),
-                       NonZeroU32::new(size.height).unwrap(),
-                       );
-                   // let renderer = self.renderer.as_ref().unwrap();
-                   // renderer.resize(size.width as i32, size.height as i32);
-               }
-           },
-           WindowEvent::CloseRequested
-               | WindowEvent::KeyboardInput {
-                   event: KeyEvent { logical_key: Key::Named(NamedKey::Escape), .. },
-                   ..
-           } => event_loop.exit(),
-           _ => { },
-       } 
+        &mut self,
+        event_loop: &winit::event_loop::ActiveEventLoop,
+        window_id: winit::window::WindowId,
+        event: winit::event::WindowEvent,
+    ) {
+        // println!("{:?}, {:?}", window_id, event);
+        match event {
+            WindowEvent::Resized(size) if size.width != 0 && size.height != 0 => {
+                if let Some(AppState { gl_surface, window: _}) = self.app_state.as_ref() {
+                    let gl_context = self.gl_context.as_ref().unwrap();
+                    gl_surface.resize(
+                        gl_context,
+                        NonZeroU32::new(size.width).unwrap(),
+                        NonZeroU32::new(size.height).unwrap(),
+                    );
+                    let renderer = self.renderer.as_ref().unwrap();
+                    // renderer.resize(size.width as i32, size.height as i32);
+                }
+            },
+            WindowEvent::CloseRequested
+                | WindowEvent::KeyboardInput {
+                    event: KeyEvent { logical_key: Key::Named(NamedKey::Escape), .. },
+                    ..
+                } => event_loop.exit(),
+            _ => { },
+        } 
     }
-    
-    fn about_to_wait(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
-       if let Some(AppState {gl_surface, window}) = self.app_state.as_ref() {
-           let gl_context = self.gl_context.as_ref().unwrap();
-           // let renderer = self.renderer.as_ref().unwrap();
-           window.request_redraw();
 
-           gl_surface.swap_buffers(gl_context).unwrap();
-       }
+    fn about_to_wait(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        if let Some(AppState {gl_surface, window}) = self.app_state.as_ref() {
+            let gl_context = self.gl_context.as_ref().unwrap();
+            // let renderer = self.renderer.as_ref().unwrap();
+            window.request_redraw();
+            let renderer = self.renderer.as_ref().unwrap();
+            renderer.draw();
+            gl_surface.swap_buffers(gl_context).unwrap();
+        }
     }
-    
+
     fn exiting(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         let _gl_display = self.gl_context.take().unwrap().display();
 
@@ -197,33 +198,41 @@ fn create_gl_context(window: &Window, gl_config: &Config) -> NotCurrentContext {
 
 fn window_attributes() -> WindowAttributes {
     Window::default_attributes()
-            .with_transparent(false)
-            .with_title(WINDOW_TITLE)
+        .with_transparent(false)
+        .with_title(WINDOW_TITLE)
 }
 
 struct Renderer {
-    gl: Option<Context>,
+    gl: Context,
+    program: NativeProgram,
 }
 
 impl Renderer {
     fn new<D: GlDisplay>(gl_display: &D) -> Self {
         unsafe{
-            let gl = glow::Context::from_loader_function_cstr(
+            let gl = Context::from_loader_function_cstr(
                 |s| gl_display.get_proc_address(s)
             );
 
+            let program = gl.create_program().expect("Failed to create gl program");
+
             Renderer {
-                gl: Some(gl),
+                gl,
+                program,
             }
         }
+    }
+
+    fn draw(&self) {
+
     }
 }
 
 #[rustfmt::skip]
 static VERTEX_DATA: [f32; 15] = [
     -0.5, -0.5,  1.0,  0.0,  0.0,
-     0.0,  0.5,  0.0,  1.0,  0.0,
-     0.5, -0.5,  0.0,  0.0,  1.0,
+    0.0,  0.5,  0.0,  1.0,  0.0,
+    0.5, -0.5,  0.0,  0.0,  1.0,
 ];
 
 const VERTEX_SHADER_SOURCE: &[u8] = b"
@@ -251,3 +260,4 @@ void main() {
     gl_FragColor = vec4(v_color, 1.0);
 }
 \0";
+
