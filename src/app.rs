@@ -150,7 +150,7 @@ impl ApplicationHandler for App {
             let gl_context = self.gl_context.as_ref().unwrap();
             // let renderer = self.renderer.as_ref().unwrap();
             window.request_redraw();
-            let game = self.game.as_ref().unwrap();
+            let mut game = self.game.as_mut().unwrap();
             game.update();
             gl_surface.swap_buffers(gl_context).unwrap();
         }

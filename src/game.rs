@@ -1,19 +1,26 @@
+use std::time::{Instant, Duration};
+use std::ops::Deref;
+
 use glow::*;
 use glutin::prelude::GlDisplay;
+use nalgebra_glm as glm;
 
 
 pub struct Game {
     renderer: Renderer,
-    // game_state: GameState,
+    game_state: GameState,
+    frame_counter: FrameCounter,
 }
 
 impl Game {
     pub fn new<D: GlDisplay>(gl_display: &D) -> Self {
         let renderer = Renderer::new(gl_display);
-
+        println!("{:?}", renderer);
 
         Game {
             renderer,
+            game_state: GameState::new(),
+            frame_counter: FrameCounter::new(),
         }
     }
 
@@ -21,16 +28,32 @@ impl Game {
         self.renderer.resize(width, height);
     }
 
-    pub fn update(&self) {
+    pub fn update(&mut self) {
+
+
+        self.game_state.update();
         self.renderer.draw();
+    }
+
+    fn update_frames(&mut self) {
+        self.frame_counter.increment();
+        match self.frame_counter.fps() {
+            Some(fps) => println!("{:.2} fps", fps),
+            None => { }
+        }
     }
 }
 
+#[derive(Debug)]
 pub struct Renderer {
     gl: Context,
     program: NativeProgram,
-    vbo: NativeBuffer,
-    vao: NativeVertexArray,
+
+    left_paddle_vbo: NativeBuffer,
+    left_paddle_vao: NativeVertexArray,
+
+    right_paddle_vbo: NativeBuffer,
+    right_paddle_vao: NativeVertexArray,
 }
 
 impl Renderer {
@@ -52,51 +75,53 @@ impl Renderer {
                 panic!("{}", gl.get_program_info_log(program));
             }
 
+            gl.delete_shader(vertex_shader);
+            gl.delete_shader(frag_shader);
+
             gl.use_program(Some(program));
-            // gl.delete_shader(vertex_shader);
-            // gl.delete_shader(frag_shader);
-
-            let (vbo, vao) = create_vertex_buffer(&gl);
-
             let pos_attrib = gl.get_attrib_location(program, "position")
                 .expect("Failed to find position location");
             let col_attrib = gl.get_attrib_location(program, "color")
                 .expect("Failed to find color location");
-            println!("DEBUG: {:?}, {:?}", pos_attrib, col_attrib);
 
-            gl.enable_vertex_attrib_array(pos_attrib);
-            gl.vertex_attrib_pointer_f32(
-                pos_attrib, 
-                2, 
-                FLOAT, 
-                false, 
-                std::mem::size_of::<[f32;5]>() as i32, 
-                0
-            );
-
-            gl.enable_vertex_attrib_array(col_attrib);
-            gl.vertex_attrib_pointer_f32(
-                col_attrib, 
-                3, 
-                FLOAT, 
-                false, 
-                std::mem::size_of::<[f32;5]>() as i32, 
-                std::mem::size_of::<[f32;2]>() as i32, 
-
-            ); 
-
+            let (left_paddle_vbo, left_paddle_vao) = 
+                create_vertex_buffer(&gl, pos_attrib, col_attrib, &LEFT_PADDLE_VERTICES);
+            let (right_paddle_vbo, right_paddle_vao) =
+                create_vertex_buffer(&gl, pos_attrib, col_attrib, &RIGHT_PADDLE_VERTICES);
 
             Renderer {
                 gl,
                 program,
-                vbo,
-                vao
+                left_paddle_vbo,
+                left_paddle_vao,
+                right_paddle_vbo,
+                right_paddle_vao,
             }
         }
     }
 
     fn draw(&self) {
-        self.draw_with_clear_color(0.0, 0.0, 0.0, 1.0);
+        unsafe {
+            self.gl.clear(COLOR_BUFFER_BIT);
+            self.gl.clear_color(0.0, 0.0, 0.0, 1.0);
+            self.gl.use_program(Some(self.program));
+            // self.draw_with_clear_color(0.0, 0.0, 0.0, 1.0);
+
+            self.draw_right_paddle();
+            self.draw_left_paddle();
+        }
+    }
+    
+    unsafe fn draw_left_paddle(&self) {
+        self.gl.bind_vertex_array(Some(self.left_paddle_vao));
+        self.gl.bind_buffer(ARRAY_BUFFER, Some(self.left_paddle_vbo));
+        self.gl.draw_arrays(TRIANGLES, 0, 6);
+    }
+
+    unsafe fn draw_right_paddle(&self) {
+        self.gl.bind_vertex_array(Some(self.right_paddle_vao));
+        self.gl.bind_buffer(ARRAY_BUFFER, Some(self.right_paddle_vbo));
+        self.gl.draw_arrays(TRIANGLES, 0, 6);
     }
 
     fn draw_with_clear_color(&self, red: f32, green: f32, blue: f32, alpha: f32) {
@@ -105,14 +130,31 @@ impl Renderer {
             self.gl.clear_color(red, green, blue, alpha);
             self.gl.use_program(Some(self.program));
 
-            self.gl.bind_vertex_array(Some(self.vao));
-            self.gl.draw_arrays(TRIANGLES, 0, 3);
         }
     }
 
     fn resize(&self, width: i32, height: i32) {
         unsafe {
             self.gl.viewport(0, 0, width, height);
+        }
+    }
+}
+
+impl Deref for Renderer {
+    type Target = Context;
+    fn deref(&self) -> &Self::Target {
+        &self.gl
+    }
+}
+
+impl Drop for Renderer {
+    fn drop(&mut self) {
+        unsafe {
+            self.gl.delete_program(self.program);
+            self.gl.delete_buffer(self.left_paddle_vbo);
+            self.gl.delete_buffer(self.right_paddle_vbo);
+            self.gl.delete_vertex_array(self.left_paddle_vao);
+            self.gl.delete_vertex_array(self.right_paddle_vao);
         }
     }
 }
@@ -131,17 +173,16 @@ unsafe fn init_shader(gl: &Context, shader_type: u32, shader_source: &str) -> Sh
     }
 }
 
-unsafe fn create_vertex_buffer(gl: &Context) -> (NativeBuffer, NativeVertexArray) {
+unsafe fn create_vertex_buffer(gl: &Context, pos_loc: u32, col_loc: u32, vertices: &[f32]) -> (NativeBuffer, NativeVertexArray) {
     let bytes: &[u8] = core::slice::from_raw_parts(
-        VERTEX_DATA.as_ptr() as *const u8,
-        VERTEX_DATA.len() * core::mem::size_of::<f32>()
+        vertices.as_ptr() as *const u8,
+        vertices.len() * core::mem::size_of::<f32>()
     );
 
     let vbo = gl.create_buffer()
         .expect("Failed to create vertex buffer object");
 
     gl.bind_buffer(ARRAY_BUFFER, Some(vbo));
-
     gl.buffer_data_u8_slice(ARRAY_BUFFER, bytes, STATIC_DRAW);
 
     let vao = gl.create_vertex_array()
@@ -149,11 +190,60 @@ unsafe fn create_vertex_buffer(gl: &Context) -> (NativeBuffer, NativeVertexArray
 
     gl.bind_vertex_array(Some(vao));
 
+    gl.enable_vertex_attrib_array(pos_loc);
+    gl.vertex_attrib_pointer_f32(
+        pos_loc, 
+        2, 
+        FLOAT, 
+        false, 
+        std::mem::size_of::<[f32;5]>() as i32, 
+        0
+    );
+
+    gl.enable_vertex_attrib_array(col_loc);
+    gl.vertex_attrib_pointer_f32(
+        col_loc, 
+        3, 
+        FLOAT, 
+        false, 
+        std::mem::size_of::<[f32;5]>() as i32, 
+        std::mem::size_of::<[f32;2]>() as i32, 
+
+    ); 
+
+    gl.bind_vertex_array(None);
+    gl.bind_buffer(ARRAY_BUFFER, None);
     (vbo, vao)
 }
 
 #[rustfmt::skip]
-static VERTEX_DATA: [f32; 15] = [
+static LEFT_PADDLE_VERTICES: [f32;30] = [
+    -0.99, -0.1,  1.0,  1.0,  1.0,
+    -0.96,  0.1,  1.0,  1.0,  1.0,
+    -0.96, -0.1,  1.0,  1.0,  1.0,
+
+    -0.99, -0.1,  1.0,  1.0,  1.0,
+    -0.96,  0.1,  1.0,  1.0,  1.0,
+    -0.99,  0.1,  1.0,  1.0,  1.0,
+];
+
+#[rustfmt::skip]
+static RIGHT_PADDLE_VERTICES: [f32;30] = [
+    0.99, -0.1,  1.0,  1.0,  1.0,
+    0.96,  0.1,  1.0,  1.0,  1.0,
+    0.96, -0.1,  1.0,  1.0,  1.0,
+
+    0.99, -0.1,  1.0,  1.0,  1.0,
+    0.96,  0.1,  1.0,  1.0,  1.0,
+    0.99,  0.1,  1.0,  1.0,  1.0,
+];
+
+
+
+
+
+#[rustfmt::skip]
+static VERTEX_DATA_TRIANGLE: [f32; 15] = [
     -0.5, -0.5,  1.0,  0.0,  0.0,
     0.0,  0.5,  0.0,  1.0,  0.0,
     0.5, -0.5,  0.0,  0.0,  1.0,
@@ -161,7 +251,7 @@ static VERTEX_DATA: [f32; 15] = [
 
 const VERTEX_SHADER_SOURCE: &str = "
 #version 100
-precision mediump float;
+// precision mediump float;
 
 attribute vec2 position;
 attribute vec3 color;
@@ -185,3 +275,89 @@ void main() {
 }
 \0";
 
+pub struct FrameCounter {
+    begin: Instant, // when was this started.
+    frame_count: u64,
+    last_update_time: Instant,
+    last_update_val: f64,
+}
+
+impl FrameCounter {
+    pub fn new() -> Self {
+        FrameCounter {
+            begin: Instant::now(),
+            frame_count: 0,
+            last_update_time: Instant::now(),
+            last_update_val: 0.0f64,
+        }
+    }
+
+    pub fn increment(&mut self) {
+        self.frame_count += 1;
+    }
+
+    pub fn fps(&mut self) -> Option<f64> {
+        if self.last_update_time.elapsed().as_secs() > 2 {
+            self.last_update_val = self.frame_count as f64/ self.begin.elapsed().as_secs() as f64;
+            self.last_update_time = Instant::now();
+            return Some(self.last_update_val);
+        }
+        None
+    }
+}
+
+struct GameState {
+
+}
+
+impl GameState {
+    fn new() -> Self {
+        GameState {
+
+        }
+    }
+
+    fn update(&mut self) {
+
+    }
+}
+
+
+const PONG_SHADER_SOURCE: &str = "
+#version 300 es
+ 
+precision highp float;
+precision highp sample2D;
+
+in vec2 uv;
+out vec4 out_color;
+
+uniform vec2 u_resolution;
+uniform float u_time;
+uniform vec4 u_mouse;
+
+uniform vec2 u_rectLeftPos;
+uniform vec3 u_rectLeftColor;
+uniform vec2 u_rectRightPos;
+uniform vec3 u_rectRightColor;
+uniform vec2 u_ballPos;
+uniform float u_ballSize;
+
+void main() {
+    vec2 st = uv * vec2(u_resolution.x / u_resolution.y, 1.);
+
+    float dist = distance(st, ballPos);
+    if (dist <= ballSize) { // ball pixel
+        out_color = vec4(1.0, 1.0, 1.0, 1.0) // white ball, could parameterize this
+    } else if ((st.x >= rectPos.x && // paddle pixel
+                st.x <= rectPos.x + rectSize.x &&
+                st.y >= rectPos.y && st.y <= rectPos.y + rectSize.y) ||
+               (st.x >= rightRectPos.x && 
+                st.x <= rightRectPos.x + rightRectSIze.x &&
+                st.y >= rightRectPos.y && st.y <= rightRectPos.y + rightRectSIze.y)) {
+        out_color = vec4(1.0, 1.0, 1.0, 1.0); // white
+    } else { // background pixel
+        out_color = vec4(0.0, 0.0, 0.0, 0.0);
+    }
+}
+";
