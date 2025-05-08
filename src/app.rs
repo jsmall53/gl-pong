@@ -1,3 +1,6 @@
+#[path = "./game.rs"]
+pub mod game;
+
 use std::{error::Error, num::NonZeroU32};
 use glutin::api::glx;
 use glutin_winit::{DisplayBuilder, GlWindow};
@@ -11,13 +14,15 @@ use glutin::{config::GetGlConfig, context::ContextAttributesBuilder, display::Ge
 use glutin::context::{PossiblyCurrentContext, NotCurrentContext, ContextApi};
 use glutin::surface::{WindowSurface, SwapInterval, Surface};
 use glutin::config::{Config, ConfigTemplateBuilder};
-use glow::*;
+
+use game::Game;
+
 
 const WINDOW_TITLE: &str = "gl-pong";
 
 pub struct App {
     template: ConfigTemplateBuilder,
-    renderer: Option<Renderer>, // TODO; implement renderer as type Renderer...
+    game: Option<Game>, // TODO; implement renderer as type Renderer...
     app_state: Option<AppState>, //TODO: implement AppState type
     gl_context: Option<PossiblyCurrentContext>,
     gl_display: GlDisplayCreationState,
@@ -34,7 +39,7 @@ impl App {
             template, 
             gl_display: GlDisplayCreationState::Builder(display_builder),
             app_state: None,
-            renderer: None,
+            game: None,
             gl_context: None,
             exit_state: Ok(())
         }
@@ -101,8 +106,7 @@ impl ApplicationHandler for App {
         let gl_context = self.gl_context.as_ref().unwrap();
         gl_context.make_current(&gl_surface);
 
-        // TODO: can initialize renderer here...
-        self.renderer.get_or_insert_with(|| Renderer::new(&gl_config.display()));
+        self.game.get_or_insert_with(|| Game::new(&gl_config.display()));
 
         if let Err(res) = gl_surface.set_swap_interval(gl_context, SwapInterval::Wait(NonZeroU32::new(1).unwrap())) {
             eprintln!("Error setting vsync: {res:?}");
@@ -128,8 +132,8 @@ impl ApplicationHandler for App {
                         NonZeroU32::new(size.width).unwrap(),
                         NonZeroU32::new(size.height).unwrap(),
                     );
-                    let renderer = self.renderer.as_ref().unwrap();
-                    // renderer.resize(size.width as i32, size.height as i32);
+                    let game = self.game.as_ref().unwrap();
+                    game.resize(size.width as i32, size.height as i32);
                 }
             },
             WindowEvent::CloseRequested
@@ -146,8 +150,8 @@ impl ApplicationHandler for App {
             let gl_context = self.gl_context.as_ref().unwrap();
             // let renderer = self.renderer.as_ref().unwrap();
             window.request_redraw();
-            let renderer = self.renderer.as_ref().unwrap();
-            renderer.draw();
+            let game = self.game.as_ref().unwrap();
+            game.update();
             gl_surface.swap_buffers(gl_context).unwrap();
         }
     }
@@ -202,62 +206,162 @@ fn window_attributes() -> WindowAttributes {
         .with_title(WINDOW_TITLE)
 }
 
-struct Renderer {
-    gl: Context,
-    program: NativeProgram,
-}
-
-impl Renderer {
-    fn new<D: GlDisplay>(gl_display: &D) -> Self {
-        unsafe{
-            let gl = Context::from_loader_function_cstr(
-                |s| gl_display.get_proc_address(s)
-            );
-
-            let program = gl.create_program().expect("Failed to create gl program");
-
-            Renderer {
-                gl,
-                program,
-            }
-        }
-    }
-
-    fn draw(&self) {
-
-    }
-}
-
-#[rustfmt::skip]
-static VERTEX_DATA: [f32; 15] = [
-    -0.5, -0.5,  1.0,  0.0,  0.0,
-    0.0,  0.5,  0.0,  1.0,  0.0,
-    0.5, -0.5,  0.0,  0.0,  1.0,
-];
-
-const VERTEX_SHADER_SOURCE: &[u8] = b"
-#version 100
-precision mediump float;
-
-attribute vec2 position;
-attribute vec3 color;
-
-varying vec3 v_color;
-
-void main() {
-    gl_Position = vec4(position, 0.0, 1.0);
-    v_color = color;
-}
-\0";
-
-const FRAGMENT_SHADER_SOURCE: &[u8] = b"
-#version 100
-precision mediump float;
-
-varying vec3 v_color;
-
-void main() {
-    gl_FragColor = vec4(v_color, 1.0);
-}
-\0";
-
+// struct Renderer {
+//     gl: Context,
+//     program: NativeProgram,
+//     vbo: NativeBuffer,
+//     vao: NativeVertexArray,
+// }
+//
+// impl Renderer {
+//     fn new<D: GlDisplay>(gl_display: &D) -> Self {
+//         unsafe{
+//             let gl = Context::from_loader_function_cstr(
+//                 |s| gl_display.get_proc_address(s)
+//             );
+//
+//             let program = gl.create_program().expect("Failed to create gl program");
+//
+//             let vertex_shader = init_shader(&gl, glow::VERTEX_SHADER, VERTEX_SHADER_SOURCE);
+//             let frag_shader = init_shader(&gl, glow::FRAGMENT_SHADER, FRAGMENT_SHADER_SOURCE);
+//
+//             gl.attach_shader(program, vertex_shader);
+//             gl.attach_shader(program, frag_shader);
+//             gl.link_program(program);
+//             if !gl.get_program_link_status(program) {
+//                 panic!("{}", gl.get_program_info_log(program));
+//             }
+//
+//             gl.use_program(Some(program));
+//             // gl.delete_shader(vertex_shader);
+//             // gl.delete_shader(frag_shader);
+//
+//             let (vbo, vao) = create_vertex_buffer(&gl);
+//
+//             let pos_attrib = gl.get_attrib_location(program, "position")
+//                 .expect("Failed to find position location");
+//             let col_attrib = gl.get_attrib_location(program, "color")
+//                 .expect("Failed to find color location");
+//             println!("DEBUG: {:?}, {:?}", pos_attrib, col_attrib);
+//
+//             gl.enable_vertex_attrib_array(pos_attrib);
+//             gl.vertex_attrib_pointer_f32(
+//                 pos_attrib, 
+//                 2, 
+//                 FLOAT, 
+//                 false, 
+//                 std::mem::size_of::<[f32;5]>() as i32, 
+//                 0
+//             );
+//
+//             gl.enable_vertex_attrib_array(col_attrib);
+//             gl.vertex_attrib_pointer_f32(
+//                 col_attrib, 
+//                 3, 
+//                 FLOAT, 
+//                 false, 
+//                 std::mem::size_of::<[f32;5]>() as i32, 
+//                 std::mem::size_of::<[f32;2]>() as i32, 
+//
+//             ); 
+//
+//
+//             Renderer {
+//                 gl,
+//                 program,
+//                 vbo,
+//                 vao
+//             }
+//         }
+//     }
+//
+//     fn draw(&self) {
+//         self.draw_with_clear_color(0.0, 0.0, 0.0, 1.0);
+//     }
+//
+//     fn draw_with_clear_color(&self, red: f32, green: f32, blue: f32, alpha: f32) {
+//         unsafe {
+//             self.gl.clear(COLOR_BUFFER_BIT);
+//             self.gl.clear_color(red, green, blue, alpha);
+//             self.gl.use_program(Some(self.program));
+//
+//             self.gl.bind_vertex_array(Some(self.vao));
+//             self.gl.draw_arrays(TRIANGLES, 0, 3);
+//         }
+//     }
+//
+//     fn resize(&self, width: i32, height: i32) {
+//         unsafe {
+//             self.gl.viewport(0, 0, width, height);
+//         }
+//     }
+// }
+//
+// unsafe fn init_shader(gl: &Context, shader_type: u32, shader_source: &str) -> Shader {
+//     let shader: Shader = gl.create_shader(shader_type)
+//         .expect(&format!("Failed to create shader: {}", shader_type));
+//
+//     gl.shader_source(shader, shader_source);
+//     gl.compile_shader(shader);
+//
+//     if !gl.get_shader_compile_status(shader) {
+//         panic!("{}", gl.get_shader_info_log(shader));
+//     } else {
+//         shader
+//     }
+// }
+//
+// unsafe fn create_vertex_buffer(gl: &Context) -> (NativeBuffer, NativeVertexArray) {
+//     let bytes: &[u8] = core::slice::from_raw_parts(
+//         VERTEX_DATA.as_ptr() as *const u8,
+//         VERTEX_DATA.len() * core::mem::size_of::<f32>()
+//     );
+//
+//     let vbo = gl.create_buffer()
+//         .expect("Failed to create vertex buffer object");
+//
+//     gl.bind_buffer(ARRAY_BUFFER, Some(vbo));
+//
+//     gl.buffer_data_u8_slice(ARRAY_BUFFER, bytes, STATIC_DRAW);
+//
+//     let vao = gl.create_vertex_array()
+//         .expect("Failed to create vertex array object");
+//
+//     gl.bind_vertex_array(Some(vao));
+//
+//     (vbo, vao)
+// }
+//
+// #[rustfmt::skip]
+// static VERTEX_DATA: [f32; 15] = [
+//     -0.5, -0.5,  1.0,  0.0,  0.0,
+//     0.0,  0.5,  0.0,  1.0,  0.0,
+//     0.5, -0.5,  0.0,  0.0,  1.0,
+// ];
+//
+// const VERTEX_SHADER_SOURCE: &str = "
+// #version 100
+// precision mediump float;
+//
+// attribute vec2 position;
+// attribute vec3 color;
+//
+// varying vec3 v_color;
+//
+// void main() {
+//     gl_Position = vec4(position, 0.0, 1.0);
+//     v_color = color;
+// }
+// \0";
+//
+// const FRAGMENT_SHADER_SOURCE: &str = "
+// #version 100
+// precision mediump float;
+//
+// varying vec3 v_color;
+//
+// void main() {
+//     gl_FragColor = vec4(v_color, 1.0);
+// }
+// \0";
+// paragraph
