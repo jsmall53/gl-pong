@@ -29,7 +29,7 @@ impl Game {
     }
 
     pub fn update(&mut self) {
-
+        self.update_frames();
 
         self.game_state.update();
         self.renderer.draw();
