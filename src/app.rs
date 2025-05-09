@@ -106,7 +106,10 @@ impl ApplicationHandler for App {
         let gl_context = self.gl_context.as_ref().unwrap();
         gl_context.make_current(&gl_surface);
 
-        self.game.get_or_insert_with(|| Game::new(&gl_config.display()));
+        self.game.get_or_insert_with(|| {
+            let size = window.inner_size();
+            Game::new(&gl_config.display(), size.width as i32, size.height as i32)
+        });
 
         if let Err(res) = gl_surface.set_swap_interval(gl_context, SwapInterval::Wait(NonZeroU32::new(1).unwrap())) {
             eprintln!("Error setting vsync: {res:?}");
@@ -132,7 +135,7 @@ impl ApplicationHandler for App {
                         NonZeroU32::new(size.width).unwrap(),
                         NonZeroU32::new(size.height).unwrap(),
                     );
-                    let game = self.game.as_ref().unwrap();
+                    let game = self.game.as_mut().unwrap();
                     game.resize(size.width as i32, size.height as i32);
                 }
             },

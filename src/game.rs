@@ -1,10 +1,11 @@
+use std::collections::HashMap;
 use std::time::{Instant, Duration};
 use std::ops::Deref;
+use std::cell::RefCell;
 
 use glow::*;
 use glutin::prelude::GlDisplay;
 use nalgebra_glm as glm;
-
 
 pub struct Game {
     renderer: Renderer,
@@ -13,18 +14,19 @@ pub struct Game {
 }
 
 impl Game {
-    pub fn new<D: GlDisplay>(gl_display: &D) -> Self {
-        let renderer = Renderer::new(gl_display);
+    pub fn new<D: GlDisplay>(gl_display: &D, width: i32, height: i32) -> Self {
+        let game_state = GameState::new();
+        let renderer = Renderer::new(gl_display, width, height, &game_state);
         println!("{:?}", renderer);
 
         Game {
             renderer,
-            game_state: GameState::new(),
+            game_state,
             frame_counter: FrameCounter::new(),
         }
     }
 
-    pub fn resize(&self, width: i32, height: i32) {
+    pub fn resize(&mut self, width: i32, height: i32) {
         self.renderer.resize(width, height);
     }
 
@@ -32,7 +34,7 @@ impl Game {
         self.update_frames();
 
         self.game_state.update();
-        self.renderer.draw();
+        self.renderer.draw(&self.game_state);
     }
 
     fn update_frames(&mut self) {
@@ -50,33 +52,152 @@ impl Game {
  * */
 
 struct GameState {
-
+    paddles: Vec<Paddle>,
 }
 
 impl GameState {
     fn new() -> Self {
-        GameState {
+        let mut next_paddle_id = 0; // this is so stupid lol
+        let x_pos = 0.99;
+        let paddle_width = 0.03;
+        let paddle_height = 0.2;
+        let left_paddle = Paddle::new(next_paddle_id, glm::Vec2::new(-x_pos, -0.1), paddle_width, paddle_height);
+        next_paddle_id += 1;
+        let right_paddle = Paddle::new(next_paddle_id, glm::Vec2::new(x_pos - paddle_width, -0.1), paddle_width, paddle_height);
+        next_paddle_id += 1;
 
+        GameState {
+            paddles: vec![left_paddle, right_paddle],
         }
     }
 
-    fn update(&mut self) {
-
+    fn paddles(&self) -> &[Paddle] {
+        &self.paddles
     }
+
+    fn update(&mut self) {
+        // let y_movement = 45.0f32.sin();
+        // for paddle in &mut self.paddles {
+        //    paddle.move_y(y_movement);
+        // }
+    }
+}
+
+pub struct Paddle {
+    id: u64,
+    width: f32,
+    height: f32,
+    position: glm::Vec2,
+    vertices: [f32;30],
+}
+
+impl Paddle {
+    fn new(id: u64, position: glm::Vec2, width: f32, height: f32) -> Self {
+
+        let x1 = position.x;
+        let x2 = position.x + width;
+        let y1 = position.y;
+        let y2 = position.y + height;
+
+        let vertices: [f32;30] = [
+            x1, y1,  1.0,  1.0,  1.0,
+            x2, y2,  1.0,  1.0,  1.0,
+            x2, y1,  1.0,  1.0,  1.0,
+
+            x1, y1,  1.0,  1.0,  1.0,
+            x2, y2,  1.0,  1.0,  1.0,
+            x1, y2,  1.0,  1.0,  1.0,
+        ];
+
+        let mut paddle = Paddle {
+            id,
+            width,
+            height,
+            position,
+            vertices, 
+        };
+        Self::clamp_position(&mut paddle.position, &width, &height);
+        
+        return paddle
+    }
+
+    fn id(&self) -> u64 {
+        self.id
+    }
+
+    fn vertices(&self) -> &[f32] {
+        &self.vertices
+    }
+
+    fn move_y(&mut self, distance: f32) {
+        self.move_by_distance(glm::Vec2::new(0.0, distance));
+    }
+
+    fn move_by_distance(&mut self, distance: glm::Vec2) {
+        self.position.x += distance.x;
+        self.position.y += distance.y;
+        Self::clamp_position(&mut self.position, &self.width, &self.height);
+        // self.update_vertices();
+    }
+
+    fn update_vertices(&mut self) {
+        let x1 = self.position.x;
+        let x2 = self.position.x + self.width;
+        let y1 = self.position.y;
+        let y2 = self.position.y + self.height;
+
+        self.vertices[0] = x1;
+        self.vertices[1] = y1;
+        self.vertices[5] = x2;
+        self.vertices[6] = y2;
+        self.vertices[10] = x2;
+        self.vertices[11] = y1;
+
+        self.vertices[15] = x1;
+        self.vertices[16] = y1;
+        self.vertices[20] = x2;
+        self.vertices[21] = y2;
+        self.vertices[25] = x1;
+        self.vertices[26] = y2;
+    }
+
+    fn clamp_position(position: &mut glm::Vec2, width: &f32, height: &f32) {
+        if position.x < -1.0 {
+            position.x = -1.0;
+        } else if position.x + width > 1.0 {
+            position.x = 1.0
+        }
+
+        if position.y < -1.0 {
+            position.y = -1.0;
+        } else if position.y + height > 1.0 {
+            position.y = 1.0;
+        }
+    }
+}
+
+pub struct Ball {
+    radius: f32,
+    position: glm::Vec2,
+    velocity: glm::Vec2, // (speed, angle)
+}
+
+impl Ball {
+
 }
 
 #[derive(Debug)]
 pub struct Renderer {
     gl: Context,
 
+    width: i32,
+    height: i32,
+
     paddle_program: NativeProgram,
     ball_program: NativeProgram,
 
-    left_paddle_vbo: NativeBuffer,
-    left_paddle_vao: NativeVertexArray,
-
-    right_paddle_vbo: NativeBuffer,
-    right_paddle_vao: NativeVertexArray,
+    paddle_data: HashMap<u64, (NativeBuffer, NativeVertexArray)>,
+    paddle_mvp: NativeUniformLocation,
 
     ball_vbo: NativeBuffer,
     ball_vao: NativeVertexArray,
@@ -84,12 +205,13 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    fn new<D: GlDisplay>(gl_display: &D) -> Self {
+    fn new<D: GlDisplay>(gl_display: &D, width: i32, height: i32, game_state: &GameState) -> Self {
         unsafe{
             let gl = Context::from_loader_function_cstr(
                 |s| gl_display.get_proc_address(s)
             );
             gl.enable(PROGRAM_POINT_SIZE);
+            gl.viewport(0, 0, width, height);
 
             let paddle_program = init_program(&gl, VERTEX_SHADER_SOURCE, FRAGMENT_SHADER_SOURCE);
 
@@ -98,14 +220,20 @@ impl Renderer {
                 .expect("Failed to find position location");
             let col_attrib = gl.get_attrib_location(paddle_program, "color")
                 .expect("Failed to find color location");
+            let paddle_mvp = gl.get_uniform_location(paddle_program, "MVP")
+                .expect("Failed to find paddle mvp location");
 
-            let (left_paddle_vbo, left_paddle_vao) = 
-                create_paddle_buffer(&gl, pos_attrib, col_attrib, &LEFT_PADDLE_VERTICES);
-            let (right_paddle_vbo, right_paddle_vao) =
-                create_paddle_buffer(&gl, pos_attrib, col_attrib, &RIGHT_PADDLE_VERTICES);
+            let mut paddle_data = HashMap::new();
+            for paddle in game_state.paddles() {
+                let vertexes = create_paddle_buffer(
+                    &gl, pos_attrib, col_attrib, paddle.vertices()
+                );
+
+                paddle_data.insert(paddle.id(), vertexes);
+            }
 
             let ball_program = init_program(&gl, BALL_VSHADER_SOURCE, BALL_FSHADER_SOURCE);
-            // TODO: setup the ball buffers
+
             gl.use_program(Some(ball_program));
             let ball_pos = gl.get_attrib_location(ball_program, "ballPosition")
                 .expect("Failed to find ball position uniform");
@@ -119,12 +247,12 @@ impl Renderer {
             gl.use_program(None);
             Renderer {
                 gl,
+                width,
+                height,
                 paddle_program,
                 ball_program,
-                left_paddle_vbo,
-                left_paddle_vao,
-                right_paddle_vbo,
-                right_paddle_vao,
+                paddle_data,
+                paddle_mvp,
                 ball_vbo,
                 ball_vao,
                 ball_radius,
@@ -132,7 +260,7 @@ impl Renderer {
         }
     }
 
-    fn draw(&self) {
+    fn draw(&self, game_state: &GameState) { // TODO: take in ball and paddle from game state so we can draw accurately...
         unsafe {
             self.gl.clear(COLOR_BUFFER_BIT);
             self.gl.clear_color(0.0, 0.0, 0.0, 1.0);
@@ -141,24 +269,31 @@ impl Renderer {
             self.draw_ball();
 
             self.gl.use_program(Some(self.paddle_program));
-            self.draw_right_paddle();
-            self.draw_left_paddle();
+            self.draw_paddles(game_state.paddles());
 
             self.gl.use_program(None);
             self.bind_vertex_array(None);
         }
     }
     
-    unsafe fn draw_left_paddle(&self) {
-        self.gl.bind_vertex_array(Some(self.left_paddle_vao));
-        // self.gl.bind_buffer(ARRAY_BUFFER, Some(self.left_paddle_vbo));
-        self.gl.draw_arrays(TRIANGLES, 0, 6);
-    }
+    unsafe fn draw_paddles(&self, paddles: &[Paddle]) {
+        unsafe {
+            for paddle in paddles {
+                if let Some((_, vao)) = self.paddle_data.get(&paddle.id()) {
+                    let ratio: f32 = self.width as f32 / self.height as f32;
+                    println!("{}, {}x{}", ratio, self.width, self.height);
+                    let m = glm::Mat4::identity();
+                    let p = glm::ortho(-ratio, ratio, -1.0, 1.0, 1.0, -1.0);
+                    let mvp = p * m;
 
-    unsafe fn draw_right_paddle(&self) {
-        self.gl.bind_vertex_array(Some(self.right_paddle_vao));
-        // self.gl.bind_buffer(ARRAY_BUFFER, Some(self.right_paddle_vbo));
-        self.gl.draw_arrays(TRIANGLES, 0, 6);
+                    let position = &paddle.position;
+                    
+                    self.gl.uniform_matrix_4_f32_slice(Some(&self.paddle_mvp), false, mvp.as_slice());
+                    self.gl.bind_vertex_array(Some(*vao));
+                    self.gl.draw_arrays(TRIANGLES, 0, 6);
+                }
+            }
+        }
     }
 
     unsafe fn draw_ball(&self) {
@@ -168,8 +303,10 @@ impl Renderer {
         self.gl.draw_arrays(POINTS, 0, 1);
     }
 
-    fn resize(&self, width: i32, height: i32) {
+    fn resize(&mut self, width: i32, height: i32) {
         unsafe {
+            self.width = width;
+            self.height = height;
             self.gl.viewport(0, 0, width, height);
         }
     }
@@ -187,10 +324,12 @@ impl Drop for Renderer {
         unsafe {
             self.gl.delete_program(self.paddle_program);
             self.gl.delete_program(self.ball_program);
-            self.gl.delete_buffer(self.left_paddle_vbo);
-            self.gl.delete_buffer(self.right_paddle_vbo);
-            self.gl.delete_vertex_array(self.left_paddle_vao);
-            self.gl.delete_vertex_array(self.right_paddle_vao);
+
+            for  (_, (vbo, vao)) in self.paddle_data.iter() {
+                self.gl.delete_buffer(*vbo);
+                self.gl.delete_vertex_array(*vao);
+            }
+            self.paddle_data.clear();
         }
     }
 }
@@ -270,44 +409,45 @@ unsafe fn create_paddle_buffer(gl: &Context, pos_loc: u32, col_loc: u32, vertice
     (vbo, vao)
 }
 
-#[rustfmt::skip]
-static LEFT_PADDLE_VERTICES: [f32;30] = [
-    -0.99, -0.1,  1.0,  1.0,  1.0,
-    -0.96,  0.1,  1.0,  1.0,  1.0,
-    -0.96, -0.1,  1.0,  1.0,  1.0,
+// #[rustfmt::skip]
+// static LEFT_PADDLE_VERTICES: [f32;30] = [
+//     -0.99, -0.1,  1.0,  1.0,  1.0,
+//     -0.96,  0.1,  1.0,  1.0,  1.0,
+//     -0.96, -0.1,  1.0,  1.0,  1.0,
+//
+//     -0.99, -0.1,  1.0,  1.0,  1.0,
+//     -0.96,  0.1,  1.0,  1.0,  1.0,
+//     -0.99,  0.1,  1.0,  1.0,  1.0,
+// ];
 
-    -0.99, -0.1,  1.0,  1.0,  1.0,
-    -0.96,  0.1,  1.0,  1.0,  1.0,
-    -0.99,  0.1,  1.0,  1.0,  1.0,
-];
-
-#[rustfmt::skip]
-static RIGHT_PADDLE_VERTICES: [f32;30] = [
-    0.99, -0.1,  1.0,  1.0,  1.0,
-    0.96,  0.1,  1.0,  1.0,  1.0,
-    0.96, -0.1,  1.0,  1.0,  1.0,
-
-    0.99, -0.1,  1.0,  1.0,  1.0,
-    0.96,  0.1,  1.0,  1.0,  1.0,
-    0.99,  0.1,  1.0,  1.0,  1.0,
-];
+// #[rustfmt::skip]
+// static RIGHT_PADDLE_VERTICES: [f32;30] = [
+//     0.99, -0.1,  1.0,  1.0,  1.0,
+//     0.96,  0.1,  1.0,  1.0,  1.0,
+//     0.96, -0.1,  1.0,  1.0,  1.0,
+//
+//     0.99, -0.1,  1.0,  1.0,  1.0,
+//     0.96,  0.1,  1.0,  1.0,  1.0,
+//     0.99,  0.1,  1.0,  1.0,  1.0,
+// ];
 
 #[rustfmt::skip]
 static BALL_VERTICES: [f32;5] = [
-    0.5, 0.5, 1.0, 1.0, 1.0,
+    0.0, 0.0, 1.0, 1.0, 1.0,
 ];
 
 const VERTEX_SHADER_SOURCE: &str = "
 #version 100
 // precision mediump float;
 
+uniform mat4 MVP;
 attribute vec2 position;
 attribute vec3 color;
 
 varying vec3 v_color;
 
 void main() {
-    gl_Position = vec4(position, 0.0, 1.0);
+    gl_Position = MVP * vec4(position, 0.0, 1.0);
     v_color = color;
 }
 \0";
