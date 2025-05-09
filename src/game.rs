@@ -44,6 +44,22 @@ impl Game {
     }
 }
 
+struct GameState {
+
+}
+
+impl GameState {
+    fn new() -> Self {
+        GameState {
+
+        }
+    }
+
+    fn update(&mut self) {
+
+    }
+}
+
 #[derive(Debug)]
 pub struct Renderer {
     gl: Context,
@@ -344,22 +360,6 @@ impl FrameCounter {
             return Some(self.last_update_val);
         }
         None
-    }
-}
-
-struct GameState {
-
-}
-
-impl GameState {
-    fn new() -> Self {
-        GameState {
-
-        }
-    }
-
-    fn update(&mut self) {
-
     }
 }
 
