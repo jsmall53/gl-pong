@@ -44,6 +44,11 @@ impl Game {
     }
 }
 
+/*
+ * Ball is going to need velocity, acceleration,
+ * position, direction(?)
+ * */
+
 struct GameState {
 
 }
@@ -72,6 +77,10 @@ pub struct Renderer {
 
     right_paddle_vbo: NativeBuffer,
     right_paddle_vao: NativeVertexArray,
+
+    ball_vbo: NativeBuffer,
+    ball_vao: NativeVertexArray,
+    ball_radius: NativeUniformLocation,
 }
 
 impl Renderer {
@@ -97,7 +106,17 @@ impl Renderer {
 
             let ball_program = init_program(&gl, BALL_VSHADER_SOURCE, BALL_FSHADER_SOURCE);
             // TODO: setup the ball buffers
+            gl.use_program(Some(ball_program));
+            let ball_pos = gl.get_attrib_location(ball_program, "ballPosition")
+                .expect("Failed to find ball position uniform");
+            let ball_col = gl.get_attrib_location(ball_program, "ballColor")
+                .expect("Failed to find ball color uniform localtion");
+            let ball_radius = gl.get_uniform_location(ball_program, "ballRadius")
+                .expect("Failed to find ball radius uniform location");
+            let (ball_vbo, ball_vao) = 
+                create_paddle_buffer(&gl, ball_pos, ball_col, &BALL_VERTICES);
 
+            gl.use_program(None);
             Renderer {
                 gl,
                 paddle_program,
@@ -106,6 +125,9 @@ impl Renderer {
                 left_paddle_vao,
                 right_paddle_vbo,
                 right_paddle_vao,
+                ball_vbo,
+                ball_vao,
+                ball_radius,
             }
         }
     }
@@ -115,13 +137,12 @@ impl Renderer {
             self.gl.clear(COLOR_BUFFER_BIT);
             self.gl.clear_color(0.0, 0.0, 0.0, 1.0);
 
-            self.gl.use_program(Some(self.paddle_program));
-            self.draw_right_paddle();
-            self.draw_left_paddle();
-
             self.gl.use_program(Some(self.ball_program));
             self.draw_ball();
 
+            self.gl.use_program(Some(self.paddle_program));
+            self.draw_right_paddle();
+            self.draw_left_paddle();
 
             self.gl.use_program(None);
             self.bind_vertex_array(None);
@@ -141,7 +162,10 @@ impl Renderer {
     }
 
     unsafe fn draw_ball(&self) {
-        // TODO: implement this.
+        self.gl.uniform_1_f32(Some(&self.ball_radius), 10.0);
+        self.gl.bind_vertex_array(Some(self.ball_vao));
+
+        self.gl.draw_arrays(POINTS, 0, 1);
     }
 
     fn resize(&self, width: i32, height: i32) {
@@ -303,14 +327,19 @@ const BALL_VSHADER_SOURCE: &str = "
 #version 100
 
 precision mediump float;
-uniform vec2 ballPosition;
+attribute vec2 ballPosition;
+attribute vec3 ballColor;
 uniform float ballRadius;
 
-uniform mat4 projection;
+varying vec3 v_color;
+
+// uniform mat4 projection;
 
 void main() {
-    gl_Position = projection * vec4(ballPosition, 0.0, 1.0);
+    // gl_Position = projection * vec4(ballPosition, 0.0, 1.0);
+    gl_Position = vec4(ballPosition, 0.0, 1.0);
     gl_PointSize = ballRadius * 2.0; // diameter
+    v_color = ballColor;
 }
 \0";
 
@@ -318,7 +347,7 @@ const BALL_FSHADER_SOURCE: &str = "
 #version 100
 precision mediump float;
 
-uniform vec3 ballColor;
+varying vec3 v_color;
 
 void main() {
     vec2 coord = gl_PointCoord * 2.0 - 1.0;
@@ -328,7 +357,7 @@ void main() {
     if (dist > 1.0)
         discard;
 
-    gl_FragColor = vec4(ballColor, alpha);
+    gl_FragColor = vec4(v_color, alpha);
 }
 \0";
 
