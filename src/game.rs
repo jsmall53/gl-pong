@@ -47,7 +47,9 @@ impl Game {
 #[derive(Debug)]
 pub struct Renderer {
     gl: Context,
-    program: NativeProgram,
+
+    paddle_program: NativeProgram,
+    ball_program: NativeProgram,
 
     left_paddle_vbo: NativeBuffer,
     left_paddle_vao: NativeVertexArray,
@@ -62,36 +64,28 @@ impl Renderer {
             let gl = Context::from_loader_function_cstr(
                 |s| gl_display.get_proc_address(s)
             );
+            gl.enable(PROGRAM_POINT_SIZE);
 
-            let program = gl.create_program().expect("Failed to create gl program");
+            let paddle_program = init_program(&gl, VERTEX_SHADER_SOURCE, FRAGMENT_SHADER_SOURCE);
 
-            let vertex_shader = init_shader(&gl, glow::VERTEX_SHADER, VERTEX_SHADER_SOURCE);
-            let frag_shader = init_shader(&gl, glow::FRAGMENT_SHADER, FRAGMENT_SHADER_SOURCE);
-
-            gl.attach_shader(program, vertex_shader);
-            gl.attach_shader(program, frag_shader);
-            gl.link_program(program);
-            if !gl.get_program_link_status(program) {
-                panic!("{}", gl.get_program_info_log(program));
-            }
-
-            gl.delete_shader(vertex_shader);
-            gl.delete_shader(frag_shader);
-
-            gl.use_program(Some(program));
-            let pos_attrib = gl.get_attrib_location(program, "position")
+            gl.use_program(Some(paddle_program));
+            let pos_attrib = gl.get_attrib_location(paddle_program, "position")
                 .expect("Failed to find position location");
-            let col_attrib = gl.get_attrib_location(program, "color")
+            let col_attrib = gl.get_attrib_location(paddle_program, "color")
                 .expect("Failed to find color location");
 
             let (left_paddle_vbo, left_paddle_vao) = 
-                create_vertex_buffer(&gl, pos_attrib, col_attrib, &LEFT_PADDLE_VERTICES);
+                create_paddle_buffer(&gl, pos_attrib, col_attrib, &LEFT_PADDLE_VERTICES);
             let (right_paddle_vbo, right_paddle_vao) =
-                create_vertex_buffer(&gl, pos_attrib, col_attrib, &RIGHT_PADDLE_VERTICES);
+                create_paddle_buffer(&gl, pos_attrib, col_attrib, &RIGHT_PADDLE_VERTICES);
+
+            let ball_program = init_program(&gl, BALL_VSHADER_SOURCE, BALL_FSHADER_SOURCE);
+            // TODO: setup the ball buffers
 
             Renderer {
                 gl,
-                program,
+                paddle_program,
+                ball_program,
                 left_paddle_vbo,
                 left_paddle_vao,
                 right_paddle_vbo,
@@ -104,33 +98,34 @@ impl Renderer {
         unsafe {
             self.gl.clear(COLOR_BUFFER_BIT);
             self.gl.clear_color(0.0, 0.0, 0.0, 1.0);
-            self.gl.use_program(Some(self.program));
-            // self.draw_with_clear_color(0.0, 0.0, 0.0, 1.0);
 
+            self.gl.use_program(Some(self.paddle_program));
             self.draw_right_paddle();
             self.draw_left_paddle();
+
+            self.gl.use_program(Some(self.ball_program));
+            self.draw_ball();
+
+
+            self.gl.use_program(None);
+            self.bind_vertex_array(None);
         }
     }
     
     unsafe fn draw_left_paddle(&self) {
         self.gl.bind_vertex_array(Some(self.left_paddle_vao));
-        self.gl.bind_buffer(ARRAY_BUFFER, Some(self.left_paddle_vbo));
+        // self.gl.bind_buffer(ARRAY_BUFFER, Some(self.left_paddle_vbo));
         self.gl.draw_arrays(TRIANGLES, 0, 6);
     }
 
     unsafe fn draw_right_paddle(&self) {
         self.gl.bind_vertex_array(Some(self.right_paddle_vao));
-        self.gl.bind_buffer(ARRAY_BUFFER, Some(self.right_paddle_vbo));
+        // self.gl.bind_buffer(ARRAY_BUFFER, Some(self.right_paddle_vbo));
         self.gl.draw_arrays(TRIANGLES, 0, 6);
     }
 
-    fn draw_with_clear_color(&self, red: f32, green: f32, blue: f32, alpha: f32) {
-        unsafe {
-            self.gl.clear(COLOR_BUFFER_BIT);
-            self.gl.clear_color(red, green, blue, alpha);
-            self.gl.use_program(Some(self.program));
-
-        }
+    unsafe fn draw_ball(&self) {
+        // TODO: implement this.
     }
 
     fn resize(&self, width: i32, height: i32) {
@@ -150,13 +145,32 @@ impl Deref for Renderer {
 impl Drop for Renderer {
     fn drop(&mut self) {
         unsafe {
-            self.gl.delete_program(self.program);
+            self.gl.delete_program(self.paddle_program);
+            self.gl.delete_program(self.ball_program);
             self.gl.delete_buffer(self.left_paddle_vbo);
             self.gl.delete_buffer(self.right_paddle_vbo);
             self.gl.delete_vertex_array(self.left_paddle_vao);
             self.gl.delete_vertex_array(self.right_paddle_vao);
         }
     }
+}
+
+unsafe fn init_program(gl: &Context, vshader_src: &str, fshader_src: &str) -> NativeProgram {
+    let program = gl.create_program().expect("Failed to create gl program");
+
+    let vertex_shader = init_shader(&gl, glow::VERTEX_SHADER, vshader_src);
+    let frag_shader = init_shader(&gl, glow::FRAGMENT_SHADER, fshader_src);
+
+    gl.attach_shader(program, vertex_shader);
+    gl.attach_shader(program, frag_shader);
+    gl.link_program(program);
+    if !gl.get_program_link_status(program) {
+        panic!("{}", gl.get_program_info_log(program));
+    }
+    gl.delete_shader(vertex_shader);
+    gl.delete_shader(frag_shader);
+
+    program
 }
 
 unsafe fn init_shader(gl: &Context, shader_type: u32, shader_source: &str) -> Shader {
@@ -173,7 +187,7 @@ unsafe fn init_shader(gl: &Context, shader_type: u32, shader_source: &str) -> Sh
     }
 }
 
-unsafe fn create_vertex_buffer(gl: &Context, pos_loc: u32, col_loc: u32, vertices: &[f32]) -> (NativeBuffer, NativeVertexArray) {
+unsafe fn create_paddle_buffer(gl: &Context, pos_loc: u32, col_loc: u32, vertices: &[f32]) -> (NativeBuffer, NativeVertexArray) {
     let bytes: &[u8] = core::slice::from_raw_parts(
         vertices.as_ptr() as *const u8,
         vertices.len() * core::mem::size_of::<f32>()
@@ -238,15 +252,9 @@ static RIGHT_PADDLE_VERTICES: [f32;30] = [
     0.99,  0.1,  1.0,  1.0,  1.0,
 ];
 
-
-
-
-
 #[rustfmt::skip]
-static VERTEX_DATA_TRIANGLE: [f32; 15] = [
-    -0.5, -0.5,  1.0,  0.0,  0.0,
-    0.0,  0.5,  0.0,  1.0,  0.0,
-    0.5, -0.5,  0.0,  0.0,  1.0,
+static BALL_VERTICES: [f32;5] = [
+    0.5, 0.5, 1.0, 1.0, 1.0,
 ];
 
 const VERTEX_SHADER_SOURCE: &str = "
@@ -272,6 +280,39 @@ varying vec3 v_color;
 
 void main() {
     gl_FragColor = vec4(v_color, 1.0);
+}
+\0";
+
+const BALL_VSHADER_SOURCE: &str = "
+#version 100
+
+precision mediump float;
+uniform vec2 ballPosition;
+uniform float ballRadius;
+
+uniform mat4 projection;
+
+void main() {
+    gl_Position = projection * vec4(ballPosition, 0.0, 1.0);
+    gl_PointSize = ballRadius * 2.0; // diameter
+}
+\0";
+
+const BALL_FSHADER_SOURCE: &str = "
+#version 100
+precision mediump float;
+
+uniform vec3 ballColor;
+
+void main() {
+    vec2 coord = gl_PointCoord * 2.0 - 1.0;
+    float dist = length(coord);
+    float alpha = smoothstep(1.0, 0.98, 1.0 - dist); // Soft edge (anti-aliasing)
+
+    if (dist > 1.0)
+        discard;
+
+    gl_FragColor = vec4(ballColor, alpha);
 }
 \0";
 
