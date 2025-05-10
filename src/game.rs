@@ -58,12 +58,12 @@ struct GameState {
 impl GameState {
     fn new() -> Self {
         let mut next_paddle_id = 0; // this is so stupid lol
-        let x_pos = 0.99;
+        let x_pos = 0.5;
         let paddle_width = 0.03;
         let paddle_height = 0.2;
-        let left_paddle = Paddle::new(next_paddle_id, glm::Vec2::new(-x_pos, -0.1), paddle_width, paddle_height);
+        let left_paddle = Paddle::new(next_paddle_id, glm::Vec2::new(-x_pos, 0.0), paddle_width, paddle_height);
         next_paddle_id += 1;
-        let right_paddle = Paddle::new(next_paddle_id, glm::Vec2::new(x_pos - paddle_width, -0.1), paddle_width, paddle_height);
+        let right_paddle = Paddle::new(next_paddle_id, glm::Vec2::new(x_pos - paddle_width, 0.0), paddle_width, paddle_height);
         next_paddle_id += 1;
 
         GameState {
@@ -263,7 +263,7 @@ impl Renderer {
     fn draw(&self, game_state: &GameState) { // TODO: take in ball and paddle from game state so we can draw accurately...
         unsafe {
             self.gl.clear(COLOR_BUFFER_BIT);
-            self.gl.clear_color(0.0, 0.0, 0.0, 1.0);
+            self.gl.clear_color(0.2, 0.5, 0.2, 1.0);
 
             self.gl.use_program(Some(self.ball_program));
             self.draw_ball();
@@ -280,13 +280,21 @@ impl Renderer {
         unsafe {
             for paddle in paddles {
                 if let Some((_, vao)) = self.paddle_data.get(&paddle.id()) {
-                    let ratio: f32 = self.width as f32 / self.height as f32;
-                    println!("{}, {}x{}", ratio, self.width, self.height);
-                    let m = glm::Mat4::identity();
-                    let p = glm::ortho(-ratio, ratio, -1.0, 1.0, 1.0, -1.0);
-                    let mvp = p * m;
-
                     let position = &paddle.position;
+
+                    let ratio: f32 = self.width as f32 / self.height as f32;
+                    let mut m = glm::Mat4::identity();
+                    let pos = &glm::Vec3::new(position.x * ratio, position.y, 0.0);
+                    println!("{}, {:?}", ratio, pos);
+                    let m2 = glm::translate(
+                        &glm::Mat4::identity(),
+                        pos,
+                    );
+
+                    let p = glm::ortho(-ratio, ratio, -1.0, 1.0, 1.0, -1.0);
+                    // let p = glm::ortho(0.0, self.width as f32, 0.0, self.height as f32, 1.0, -1.0);
+                    let mvp = p * m2;
+
                     
                     self.gl.uniform_matrix_4_f32_slice(Some(&self.paddle_mvp), false, mvp.as_slice());
                     self.gl.bind_vertex_array(Some(*vao));
