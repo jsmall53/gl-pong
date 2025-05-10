@@ -58,16 +58,16 @@ struct GameState {
 impl GameState {
     fn new() -> Self {
         let mut next_paddle_id = 0; // this is so stupid lol
-        let x_pos = 0.5;
-        let paddle_width = 0.03;
+        let x_pos = 0.95;
         let paddle_height = 0.2;
+        let paddle_width = 0.03;
         let left_paddle = Paddle::new(next_paddle_id, glm::Vec2::new(-x_pos, 0.0), paddle_width, paddle_height);
         next_paddle_id += 1;
-        let right_paddle = Paddle::new(next_paddle_id, glm::Vec2::new(x_pos - paddle_width, 0.0), paddle_width, paddle_height);
-        next_paddle_id += 1;
+        // let right_paddle = Paddle::new(next_paddle_id, glm::Vec2::new(x_pos - paddle_width, 0.1), paddle_width, paddle_height);
+        // next_paddle_id += 1;
 
         GameState {
-            paddles: vec![left_paddle, right_paddle],
+            paddles: vec![left_paddle],
         }
     }
 
@@ -91,30 +91,48 @@ pub struct Paddle {
     vertices: [f32;30],
 }
 
+static X1_PADDLE: f32 = -0.015;
+static X2_PADDLE: f32 = 0.015;
+static Y1_PADDLE: f32 = -0.1;
+static Y2_PADDLE: f32 = 0.1;
+
+static PADDLE_WIDTH: f32 = Y2_PADDLE - Y1_PADDLE;
+static PADDLE_HEIGHT: f32 = X2_PADDLE - X1_PADDLE;
+
+static PADDLE_VERTICES: [f32;30] = [
+    X1_PADDLE, Y1_PADDLE,  1.0,  1.0,  1.0,
+    X2_PADDLE, Y2_PADDLE,  1.0,  1.0,  1.0,
+    X2_PADDLE, Y1_PADDLE,  1.0,  1.0,  1.0,
+
+    X1_PADDLE, Y1_PADDLE,  1.0,  1.0,  1.0,
+    X2_PADDLE, Y2_PADDLE,  1.0,  1.0,  1.0,
+    X1_PADDLE, Y2_PADDLE,  1.0,  1.0,  1.0,
+];
+
 impl Paddle {
     fn new(id: u64, position: glm::Vec2, width: f32, height: f32) -> Self {
 
-        let x1 = position.x;
-        let x2 = position.x + width;
-        let y1 = position.y;
-        let y2 = position.y + height;
-
-        let vertices: [f32;30] = [
-            x1, y1,  1.0,  1.0,  1.0,
-            x2, y2,  1.0,  1.0,  1.0,
-            x2, y1,  1.0,  1.0,  1.0,
-
-            x1, y1,  1.0,  1.0,  1.0,
-            x2, y2,  1.0,  1.0,  1.0,
-            x1, y2,  1.0,  1.0,  1.0,
-        ];
+        // let x1 = position.x;
+        // let x2 = position.x + width;
+        // let y1 = position.y;
+        // let y2 = position.y + height;
+        //
+        // let vertices: [f32;30] = [
+        //     x1, y1,  1.0,  1.0,  1.0,
+        //     x2, y2,  1.0,  1.0,  1.0,
+        //     x2, y1,  1.0,  1.0,  1.0,
+        //
+        //     x1, y1,  1.0,  1.0,  1.0,
+        //     x2, y2,  1.0,  1.0,  1.0,
+        //     x1, y2,  1.0,  1.0,  1.0,
+        // ];
 
         let mut paddle = Paddle {
             id,
             width,
             height,
             position,
-            vertices, 
+            vertices: PADDLE_VERTICES.clone(), 
         };
         Self::clamp_position(&mut paddle.position, &width, &height);
         
@@ -265,8 +283,8 @@ impl Renderer {
             self.gl.clear(COLOR_BUFFER_BIT);
             self.gl.clear_color(0.2, 0.5, 0.2, 1.0);
 
-            self.gl.use_program(Some(self.ball_program));
-            self.draw_ball();
+            // self.gl.use_program(Some(self.ball_program));
+            // self.draw_ball();
 
             self.gl.use_program(Some(self.paddle_program));
             self.draw_paddles(game_state.paddles());
