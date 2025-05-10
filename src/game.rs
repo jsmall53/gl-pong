@@ -52,6 +52,7 @@ impl Game {
  * */
 
 struct GameState {
+    start_time: Instant,
     paddles: Vec<Paddle>,
 }
 
@@ -59,15 +60,14 @@ impl GameState {
     fn new() -> Self {
         let mut next_paddle_id = 0; // this is so stupid lol
         let x_pos = 0.95;
-        let paddle_height = 0.2;
-        let paddle_width = 0.03;
-        let left_paddle = Paddle::new(next_paddle_id, glm::Vec2::new(-x_pos, 0.0), paddle_width, paddle_height);
+        let left_paddle = Paddle::new(next_paddle_id, glm::Vec2::new(-x_pos, 0.0), PADDLE_WIDTH, PADDLE_HEIGHT);
         next_paddle_id += 1;
-        // let right_paddle = Paddle::new(next_paddle_id, glm::Vec2::new(x_pos - paddle_width, 0.1), paddle_width, paddle_height);
-        // next_paddle_id += 1;
+        let right_paddle = Paddle::new(next_paddle_id, glm::Vec2::new(x_pos - (PADDLE_WIDTH / 2.0f32), 0.0), PADDLE_WIDTH, PADDLE_HEIGHT);
+        next_paddle_id += 1;
 
         GameState {
-            paddles: vec![left_paddle],
+            start_time: Instant::now(),
+            paddles: vec![left_paddle, right_paddle],
         }
     }
 
@@ -76,10 +76,12 @@ impl GameState {
     }
 
     fn update(&mut self) {
-        // let y_movement = 45.0f32.sin();
-        // for paddle in &mut self.paddles {
-        //    paddle.move_y(y_movement);
-        // }
+        let time = self.start_time.elapsed().as_secs_f32();
+        let y_movement = (time * std::f32::consts::PI * 0.3).sin();
+        println!("{}", y_movement);
+        for paddle in &mut self.paddles {
+           paddle.move_y(y_movement);
+        }
     }
 }
 
@@ -96,11 +98,11 @@ static X2_PADDLE: f32 = 0.015;
 static Y1_PADDLE: f32 = -0.1;
 static Y2_PADDLE: f32 = 0.1;
 
-static PADDLE_WIDTH: f32 = Y2_PADDLE - Y1_PADDLE;
-static PADDLE_HEIGHT: f32 = X2_PADDLE - X1_PADDLE;
+static PADDLE_WIDTH: f32 = X2_PADDLE - X1_PADDLE;
+static PADDLE_HEIGHT: f32 = Y2_PADDLE - Y1_PADDLE;
 
 static PADDLE_VERTICES: [f32;30] = [
-    X1_PADDLE, Y1_PADDLE,  1.0,  1.0,  1.0,
+    X1_PADDLE, Y1_PADDLE,  1.0,  0.0,  1.0,
     X2_PADDLE, Y2_PADDLE,  1.0,  1.0,  1.0,
     X2_PADDLE, Y1_PADDLE,  1.0,  1.0,  1.0,
 
@@ -111,21 +113,6 @@ static PADDLE_VERTICES: [f32;30] = [
 
 impl Paddle {
     fn new(id: u64, position: glm::Vec2, width: f32, height: f32) -> Self {
-
-        // let x1 = position.x;
-        // let x2 = position.x + width;
-        // let y1 = position.y;
-        // let y2 = position.y + height;
-        //
-        // let vertices: [f32;30] = [
-        //     x1, y1,  1.0,  1.0,  1.0,
-        //     x2, y2,  1.0,  1.0,  1.0,
-        //     x2, y1,  1.0,  1.0,  1.0,
-        //
-        //     x1, y1,  1.0,  1.0,  1.0,
-        //     x2, y2,  1.0,  1.0,  1.0,
-        //     x1, y2,  1.0,  1.0,  1.0,
-        // ];
 
         let mut paddle = Paddle {
             id,
@@ -147,50 +134,30 @@ impl Paddle {
         &self.vertices
     }
 
-    fn move_y(&mut self, distance: f32) {
-        self.move_by_distance(glm::Vec2::new(0.0, distance));
+    fn move_y(&mut self, y_pos: f32) {
+        self.move_position(glm::Vec2::new(self.position.x, y_pos));
     }
 
-    fn move_by_distance(&mut self, distance: glm::Vec2) {
-        self.position.x += distance.x;
-        self.position.y += distance.y;
+    fn move_position(&mut self, new_pos: glm::Vec2) {
+        self.position = new_pos;
         Self::clamp_position(&mut self.position, &self.width, &self.height);
-        // self.update_vertices();
-    }
-
-    fn update_vertices(&mut self) {
-        let x1 = self.position.x;
-        let x2 = self.position.x + self.width;
-        let y1 = self.position.y;
-        let y2 = self.position.y + self.height;
-
-        self.vertices[0] = x1;
-        self.vertices[1] = y1;
-        self.vertices[5] = x2;
-        self.vertices[6] = y2;
-        self.vertices[10] = x2;
-        self.vertices[11] = y1;
-
-        self.vertices[15] = x1;
-        self.vertices[16] = y1;
-        self.vertices[20] = x2;
-        self.vertices[21] = y2;
-        self.vertices[25] = x1;
-        self.vertices[26] = y2;
+        // println!("{} ({},{})", self.id, self.position.x, self.position.y);
     }
 
     fn clamp_position(position: &mut glm::Vec2, width: &f32, height: &f32) {
+        let y_offset = height / 2.0f32;
+        if position.y - y_offset < -1.0 {
+            position.y = -1.0 + y_offset;
+        } else if position.y + y_offset > 1.0 {
+            position.y = 1.0 - y_offset;
+        }
+        
         if position.x < -1.0 {
             position.x = -1.0;
         } else if position.x + width > 1.0 {
-            position.x = 1.0
+            position.x = 1.0 - width;
         }
 
-        if position.y < -1.0 {
-            position.y = -1.0;
-        } else if position.y + height > 1.0 {
-            position.y = 1.0;
-        }
     }
 }
 
@@ -301,18 +268,15 @@ impl Renderer {
                     let position = &paddle.position;
 
                     let ratio: f32 = self.width as f32 / self.height as f32;
-                    let mut m = glm::Mat4::identity();
                     let pos = &glm::Vec3::new(position.x * ratio, position.y, 0.0);
-                    println!("{}, {:?}", ratio, pos);
-                    let m2 = glm::translate(
+
+                    let m = glm::translate(
                         &glm::Mat4::identity(),
                         pos,
                     );
 
                     let p = glm::ortho(-ratio, ratio, -1.0, 1.0, 1.0, -1.0);
-                    // let p = glm::ortho(0.0, self.width as f32, 0.0, self.height as f32, 1.0, -1.0);
-                    let mvp = p * m2;
-
+                    let mvp = p * m;
                     
                     self.gl.uniform_matrix_4_f32_slice(Some(&self.paddle_mvp), false, mvp.as_slice());
                     self.gl.bind_vertex_array(Some(*vao));
