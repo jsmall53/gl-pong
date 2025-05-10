@@ -59,8 +59,8 @@ struct GameState {
 impl GameState {
     fn new() -> Self {
         let mut next_paddle_id = 0; // this is so stupid lol
-        let x_pos = 0.95;
-        let left_paddle = Paddle::new(next_paddle_id, glm::Vec2::new(-x_pos, 0.0), PADDLE_WIDTH, PADDLE_HEIGHT);
+        let x_pos = 0.99;
+        let left_paddle = Paddle::new(next_paddle_id, glm::Vec2::new(-x_pos + (PADDLE_WIDTH / 2.0f32), 0.0), PADDLE_WIDTH, PADDLE_HEIGHT);
         next_paddle_id += 1;
         let right_paddle = Paddle::new(next_paddle_id, glm::Vec2::new(x_pos - (PADDLE_WIDTH / 2.0f32), 0.0), PADDLE_WIDTH, PADDLE_HEIGHT);
         next_paddle_id += 1;
@@ -152,10 +152,11 @@ impl Paddle {
             position.y = 1.0 - y_offset;
         }
         
-        if position.x < -1.0 {
-            position.x = -1.0;
-        } else if position.x + width > 1.0 {
-            position.x = 1.0 - width;
+        let x_offset = width / 2.0f32;
+        if position.x - x_offset < -1.0 {
+            position.x = -1.0 + x_offset;
+        } else if position.x + x_offset > 1.0 {
+            position.x = 1.0 - x_offset;
         }
 
     }
