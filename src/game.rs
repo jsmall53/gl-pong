@@ -54,25 +54,32 @@ impl Game {
 struct GameState {
     start_time: Instant,
     paddles: Vec<Paddle>,
+    balls: Vec<Ball>,
 }
 
 impl GameState {
     fn new() -> Self {
-        let mut next_paddle_id = 0; // this is so stupid lol
+        let mut next_item_id = 0; // this is so stupid lol
         let x_pos = 0.99;
-        let left_paddle = Paddle::new(next_paddle_id, glm::Vec2::new(-x_pos + (PADDLE_WIDTH / 2.0f32), 0.0), PADDLE_WIDTH, PADDLE_HEIGHT);
-        next_paddle_id += 1;
-        let right_paddle = Paddle::new(next_paddle_id, glm::Vec2::new(x_pos - (PADDLE_WIDTH / 2.0f32), 0.0), PADDLE_WIDTH, PADDLE_HEIGHT);
-        next_paddle_id += 1;
+        let left_paddle = Paddle::new(next_item_id, glm::Vec2::new(-x_pos + (PADDLE_WIDTH / 2.0f32), 0.0), PADDLE_WIDTH, PADDLE_HEIGHT);
+        next_item_id += 1;
+        let right_paddle = Paddle::new(next_item_id, glm::Vec2::new(x_pos - (PADDLE_WIDTH / 2.0f32), 0.0), PADDLE_WIDTH, PADDLE_HEIGHT);
+        next_item_id += 1;
 
+        let ball = Ball::new(next_item_id, 10.0);
         GameState {
             start_time: Instant::now(),
             paddles: vec![left_paddle, right_paddle],
+            balls: vec![ball],
         }
     }
 
     fn paddles(&self) -> &[Paddle] {
         &self.paddles
+    }
+    
+    fn balls(&self) -> &[Ball] {
+        &self.balls
     }
 
     fn update(&mut self) {
@@ -102,7 +109,7 @@ static PADDLE_WIDTH: f32 = X2_PADDLE - X1_PADDLE;
 static PADDLE_HEIGHT: f32 = Y2_PADDLE - Y1_PADDLE;
 
 static PADDLE_VERTICES: [f32;30] = [
-    X1_PADDLE, Y1_PADDLE,  1.0,  0.0,  1.0,
+    X1_PADDLE, Y1_PADDLE,  1.0,  1.0,  1.0,
     X2_PADDLE, Y2_PADDLE,  1.0,  1.0,  1.0,
     X2_PADDLE, Y1_PADDLE,  1.0,  1.0,  1.0,
 
@@ -121,7 +128,7 @@ impl Paddle {
             position,
             vertices: PADDLE_VERTICES.clone(), 
         };
-        Self::clamp_position(&mut paddle.position, &width, &height);
+        paddle.clamp_position();
         
         return paddle
     }
@@ -140,36 +147,81 @@ impl Paddle {
 
     fn move_position(&mut self, new_pos: glm::Vec2) {
         self.position = new_pos;
-        Self::clamp_position(&mut self.position, &self.width, &self.height);
-        // println!("{} ({},{})", self.id, self.position.x, self.position.y);
+        self.clamp_position();
     }
 
-    fn clamp_position(position: &mut glm::Vec2, width: &f32, height: &f32) {
-        let y_offset = height / 2.0f32;
-        if position.y - y_offset < -1.0 {
-            position.y = -1.0 + y_offset;
-        } else if position.y + y_offset > 1.0 {
-            position.y = 1.0 - y_offset;
-        }
-        
-        let x_offset = width / 2.0f32;
-        if position.x - x_offset < -1.0 {
-            position.x = -1.0 + x_offset;
-        } else if position.x + x_offset > 1.0 {
-            position.x = 1.0 - x_offset;
-        }
-
+    fn clamp_position(&mut self) {
+        self.position = clamp_position_2d(
+            self.position,
+            -1.0,
+            1.0,
+            -1.0,
+            1.0,
+            self.width / 2.0,
+            self.height / 2.0,
+        );
     }
 }
 
 pub struct Ball {
+    id: u64,
     radius: f32,
     position: glm::Vec2,
     velocity: glm::Vec2, // (speed, angle)
+    vertices: [f32;5],
 }
 
-impl Ball {
+static BALL_VERTICES: [f32;5] = [
+    0.0, 0.0, 1.0, 1.0, 1.0,
+];
 
+impl Ball {
+    fn new(id: u64, radius: f32) -> Self {
+        Ball {
+            id,
+            radius,
+            position: glm::Vec2::new(0.0, 0.0),
+            velocity: glm::Vec2::new(0.0, 0.0),
+            vertices: BALL_VERTICES.clone(),
+        }
+    }
+
+    fn id(&self) -> u64 {
+        self.id
+    }
+    
+    fn vertices(&self) -> &[f32] {
+        &self.vertices
+    }
+
+    fn clamp_position(&mut self) {
+        self.position = clamp_position_2d(
+            self.position, 
+            -1.0,
+            1.0,
+            -1.0,
+            1.0,
+            self.radius,
+            self.radius
+        )
+    }
+}
+
+fn clamp_position_2d(pos: glm::Vec2, x_min: f32, x_max: f32, y_min: f32, y_max: f32, x_offset: f32, y_offset: f32) -> glm::Vec2 {
+    let mut out_pos = glm::Vec2::new(pos.x, pos.y);
+    if pos.y - y_offset < y_min {
+        out_pos.y = y_min + y_offset;
+    } else if pos.y + y_offset > y_max {
+        out_pos.y = y_max - y_offset;
+    }
+
+    if pos.x - x_offset < x_min {
+        out_pos.x = x_min + x_offset;
+    } else if pos.x + x_offset > x_max {
+        out_pos.x = x_max - x_offset;
+    }
+
+    out_pos
 }
 
 #[derive(Debug)]
@@ -185,8 +237,8 @@ pub struct Renderer {
     paddle_data: HashMap<u64, (NativeBuffer, NativeVertexArray)>,
     paddle_mvp: NativeUniformLocation,
 
-    ball_vbo: NativeBuffer,
-    ball_vao: NativeVertexArray,
+    ball_data: HashMap<u64, (NativeBuffer, NativeVertexArray)>,
+    ball_mvp: NativeUniformLocation,
     ball_radius: NativeUniformLocation,
 }
 
@@ -206,7 +258,7 @@ impl Renderer {
                 .expect("Failed to find position location");
             let col_attrib = gl.get_attrib_location(paddle_program, "color")
                 .expect("Failed to find color location");
-            let paddle_mvp = gl.get_uniform_location(paddle_program, "MVP")
+            let paddle_mvp = gl.get_uniform_location(paddle_program, "u_MVP")
                 .expect("Failed to find paddle mvp location");
 
             let mut paddle_data = HashMap::new();
@@ -225,11 +277,19 @@ impl Renderer {
                 .expect("Failed to find ball position uniform");
             let ball_col = gl.get_attrib_location(ball_program, "ballColor")
                 .expect("Failed to find ball color uniform localtion");
-            let ball_radius = gl.get_uniform_location(ball_program, "ballRadius")
+            let ball_radius = gl.get_uniform_location(ball_program, "u_ballRadius")
                 .expect("Failed to find ball radius uniform location");
-            let (ball_vbo, ball_vao) = 
-                create_paddle_buffer(&gl, ball_pos, ball_col, &BALL_VERTICES);
+            let ball_mvp = gl.get_uniform_location(ball_program, "u_ballMVP")
+                .expect("Failed to find ball MVP uniform location");
 
+            let mut ball_data = HashMap::new();
+            for ball in game_state.balls() {
+                let vertexes = create_paddle_buffer(
+                    &gl, ball_pos, ball_col, ball.vertices()
+                );
+
+                ball_data.insert(ball.id(), vertexes);
+            }
             gl.use_program(None);
             Renderer {
                 gl,
@@ -239,8 +299,8 @@ impl Renderer {
                 ball_program,
                 paddle_data,
                 paddle_mvp,
-                ball_vbo,
-                ball_vao,
+                ball_data,
+                ball_mvp,
                 ball_radius,
             }
         }
@@ -251,8 +311,8 @@ impl Renderer {
             self.gl.clear(COLOR_BUFFER_BIT);
             self.gl.clear_color(0.2, 0.5, 0.2, 1.0);
 
-            // self.gl.use_program(Some(self.ball_program));
-            // self.draw_ball();
+            self.gl.use_program(Some(self.ball_program));
+            self.draw_balls(game_state.balls());
 
             self.gl.use_program(Some(self.paddle_program));
             self.draw_paddles(game_state.paddles());
@@ -266,7 +326,7 @@ impl Renderer {
         unsafe {
             for paddle in paddles {
                 if let Some((_, vao)) = self.paddle_data.get(&paddle.id()) {
-                    let position = &paddle.position;
+                    let position = &paddle.position; // TODO: safe position access
 
                     let ratio: f32 = self.width as f32 / self.height as f32;
                     let pos = &glm::Vec3::new(position.x * ratio, position.y, 0.0);
@@ -276,7 +336,7 @@ impl Renderer {
                         pos,
                     );
 
-                    let p = glm::ortho(-ratio, ratio, -1.0, 1.0, 1.0, -1.0);
+                    let p = self.ortho_2d(ratio);
                     let mvp = p * m;
                     
                     self.gl.uniform_matrix_4_f32_slice(Some(&self.paddle_mvp), false, mvp.as_slice());
@@ -287,11 +347,42 @@ impl Renderer {
         }
     }
 
-    unsafe fn draw_ball(&self) {
-        self.gl.uniform_1_f32(Some(&self.ball_radius), 10.0);
-        self.gl.bind_vertex_array(Some(self.ball_vao));
+    unsafe fn draw_balls(&self, balls: &[Ball]) {
+        unsafe {
+            for ball in balls {
+                if let Some((_, vao)) = self.ball_data.get(&ball.id()) {
+                    let position = &ball.position; // TODO: safe position access
+                    let ratio: f32 = self.width as f32 / self.height as f32; // TODO: only do this
+                                                                             // once per loop, pass
+                                                                             // as param.
+                    let pos = &glm::Vec3::new(position.x * ratio, position.y, 0.0);
 
-        self.gl.draw_arrays(POINTS, 0, 1);
+                    let m = glm::translate(
+                        &glm::Mat4::identity(),
+                        pos,
+                    );
+
+                    let p = self.ortho_2d(ratio);
+                    let mvp = p * m;
+
+                    self.gl.uniform_matrix_4_f32_slice(Some(&self.ball_mvp), false, mvp.as_slice());
+                    self.gl.uniform_1_f32(Some(&self.ball_radius), ball.radius);
+                    self.gl.bind_vertex_array(Some(*vao));
+                    self.gl.draw_arrays(POINTS, 0, 1);
+                }
+            }
+        }
+    }
+
+    fn ortho_2d(&self, aspect_ratio: f32) -> glm::Mat4 {
+        glm::ortho(
+            -aspect_ratio,
+            aspect_ratio,
+            -1.0,
+            1.0,
+            1.0,
+            -1.0,
+            )
     }
 
     fn resize(&mut self, width: i32, height: i32) {
@@ -400,45 +491,18 @@ unsafe fn create_paddle_buffer(gl: &Context, pos_loc: u32, col_loc: u32, vertice
     (vbo, vao)
 }
 
-// #[rustfmt::skip]
-// static LEFT_PADDLE_VERTICES: [f32;30] = [
-//     -0.99, -0.1,  1.0,  1.0,  1.0,
-//     -0.96,  0.1,  1.0,  1.0,  1.0,
-//     -0.96, -0.1,  1.0,  1.0,  1.0,
-//
-//     -0.99, -0.1,  1.0,  1.0,  1.0,
-//     -0.96,  0.1,  1.0,  1.0,  1.0,
-//     -0.99,  0.1,  1.0,  1.0,  1.0,
-// ];
-
-// #[rustfmt::skip]
-// static RIGHT_PADDLE_VERTICES: [f32;30] = [
-//     0.99, -0.1,  1.0,  1.0,  1.0,
-//     0.96,  0.1,  1.0,  1.0,  1.0,
-//     0.96, -0.1,  1.0,  1.0,  1.0,
-//
-//     0.99, -0.1,  1.0,  1.0,  1.0,
-//     0.96,  0.1,  1.0,  1.0,  1.0,
-//     0.99,  0.1,  1.0,  1.0,  1.0,
-// ];
-
-#[rustfmt::skip]
-static BALL_VERTICES: [f32;5] = [
-    0.0, 0.0, 1.0, 1.0, 1.0,
-];
-
 const VERTEX_SHADER_SOURCE: &str = "
 #version 100
 // precision mediump float;
 
-uniform mat4 MVP;
+uniform mat4 u_MVP;
 attribute vec2 position;
 attribute vec3 color;
 
 varying vec3 v_color;
 
 void main() {
-    gl_Position = MVP * vec4(position, 0.0, 1.0);
+    gl_Position = u_MVP * vec4(position, 0.0, 1.0);
     v_color = color;
 }
 \0";
@@ -458,18 +522,18 @@ const BALL_VSHADER_SOURCE: &str = "
 #version 100
 
 precision mediump float;
+
+uniform mat4 u_ballMVP;
+uniform float u_ballRadius;
+
 attribute vec2 ballPosition;
 attribute vec3 ballColor;
-uniform float ballRadius;
 
 varying vec3 v_color;
 
-// uniform mat4 projection;
-
 void main() {
-    // gl_Position = projection * vec4(ballPosition, 0.0, 1.0);
-    gl_Position = vec4(ballPosition, 0.0, 1.0);
-    gl_PointSize = ballRadius * 2.0; // diameter
+    gl_Position = u_ballMVP * vec4(ballPosition, 0.0, 1.0);
+    gl_PointSize = u_ballRadius * 2.0; // diameter
     v_color = ballColor;
 }
 \0";
