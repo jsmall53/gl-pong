@@ -31,18 +31,19 @@ impl Game {
     }
 
     pub fn update(&mut self) {
-        self.update_frames();
+        let delta = self.update_frames();
 
-        self.game_state.update();
+        self.game_state.update(delta);
         self.renderer.draw(&self.game_state);
     }
 
-    fn update_frames(&mut self) {
-        self.frame_counter.increment();
+    fn update_frames(&mut self) -> f32 {
+        let delta = self.frame_counter.increment();
         match self.frame_counter.fps() {
             Some(fps) => println!("{:.2} fps", fps),
             None => { }
         }
+        delta
     }
 }
 
@@ -82,13 +83,25 @@ impl GameState {
         &self.balls
     }
 
-    fn update(&mut self) {
+    fn update(&mut self, delta: f32) {
         let time = self.start_time.elapsed().as_secs_f32();
+
+        for ball in &mut self.balls {
+            ball.apply_velocity(delta);
+            // TODO: resolve collisions
+            // TODO: clamp speed
+        }
+
         let y_movement = (time * std::f32::consts::PI * 0.3).sin();
         println!("{}", y_movement);
         for paddle in &mut self.paddles {
            paddle.move_y(y_movement);
         }
+    }
+
+    fn resolve_collisions(&mut self, ball: &Ball, ) {
+        // ceiling surface should be Vec2(1.0, -1.0) for surface normal pointing down.
+        // floor surface should be Vec2(-1.0, 1.0) for surface normal pointing up
     }
 }
 
@@ -161,6 +174,39 @@ impl Paddle {
             self.height / 2.0,
         );
     }
+
+    // TODO: fix this so that surface is relative to another object instead of hardcoded left and
+    // right. Currently the left paddle will always use the right edge for the surface and right
+    // paddle will always use left edge for the surface. A surface should be relative to another
+    // object (ball in our case). If the object is the right of this paddle use right edge, if the object
+    // is to the left of this paddle use left edge, above us. For regular pong only vertical
+    // surfaces are relevant. Maybe a better version would be to construct a list of surfaces from
+    // each object and just do collision resolution for each surface. Might have funny cases for
+    // corner hits and such that would make this interesting...
+    // New parameter should be a position vector that we can compare to our current pos.
+    // let dir = (incoming.x - self.pos.x).signum()
+    fn surface(&self) -> Surface {
+        let direction = self.position.x.signum();
+        let y_offset = self.height / 2.0f32;
+        let x_offset = self.width / 2.0f32;
+
+        let mut a = glm::Vec2::new(0.0, 0.0);
+        let mut b = glm::Vec2::new(0.0, 0.0);
+
+        a.y = self.position.y - y_offset;
+        b.y = self.position.y + y_offset;
+
+        let x = self.position.x + (direction * -x_offset);
+        a.x = x;
+        b.x = x;
+
+        Surface { a, b }
+    }
+}
+
+struct Surface {
+    a: glm::Vec2,
+    b: glm::Vec2,
 }
 
 pub struct Ball {
@@ -181,7 +227,7 @@ impl Ball {
             id,
             radius,
             position: glm::Vec2::new(0.0, 0.0),
-            velocity: glm::Vec2::new(0.0, 0.0),
+            velocity: glm::Vec2::new(0.5, 0.5),
             vertices: BALL_VERTICES.clone(),
         }
     }
@@ -204,6 +250,10 @@ impl Ball {
             self.radius,
             self.radius
         )
+    }
+
+    fn apply_velocity(&mut self, delta: f32) {
+        self.position += self.velocity * delta;
     }
 }
 
@@ -559,6 +609,7 @@ void main() {
 pub struct FrameCounter {
     begin: Instant, // when was this started.
     frame_count: u64,
+    last_frame_time: Instant,
     last_update_time: Instant,
     last_update_val: f64,
 }
@@ -568,13 +619,17 @@ impl FrameCounter {
         FrameCounter {
             begin: Instant::now(),
             frame_count: 0,
+            last_frame_time: Instant::now(),
             last_update_time: Instant::now(),
             last_update_val: 0.0f64,
         }
     }
 
-    pub fn increment(&mut self) {
+    pub fn increment(&mut self) -> f32 {
+        let delta = self.last_frame_time.elapsed().as_secs_f32();
         self.frame_count += 1;
+        self.last_frame_time = Instant::now();
+        delta
     }
 
     pub fn fps(&mut self) -> Option<f64> {
