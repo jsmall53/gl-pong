@@ -1,3 +1,9 @@
+pub mod renderer;
+use renderer::*;
+
+pub mod physics;
+use physics::*;
+
 use std::collections::HashMap;
 use std::time::{Instant, Duration};
 use std::ops::Deref;
@@ -56,22 +62,39 @@ struct GameState {
     start_time: Instant,
     paddles: Vec<Paddle>,
     balls: Vec<Ball>,
+    surfaces: Vec<Surface>,
 }
 
 impl GameState {
     fn new() -> Self {
         let mut next_item_id = 0; // this is so stupid lol
+                                  //
+        // Paddles.
         let x_pos = 0.99;
         let left_paddle = Paddle::new(next_item_id, glm::Vec2::new(-x_pos + (PADDLE_WIDTH / 2.0f32), 0.0), PADDLE_WIDTH, PADDLE_HEIGHT);
         next_item_id += 1;
         let right_paddle = Paddle::new(next_item_id, glm::Vec2::new(x_pos - (PADDLE_WIDTH / 2.0f32), 0.0), PADDLE_WIDTH, PADDLE_HEIGHT);
         next_item_id += 1;
 
-        let ball = Ball::new(next_item_id, 10.0);
+        // Balls.
+        let ball = Ball::new(next_item_id, 0.02);
+
+        // Extra surfaces
+        let floor = Surface { 
+            a: glm::Vec2::new(-1.0, -1.0),
+            b: glm::Vec2::new(1.0, -1.0),
+        };
+        let ceiling = Surface {
+            a: glm::Vec2::new(1.0, 1.0),
+            b: glm::Vec2::new(-1.0, 1.0),
+        };
+        let surfaces = vec![floor, ceiling];
+
         GameState {
             start_time: Instant::now(),
             paddles: vec![left_paddle, right_paddle],
             balls: vec![ball],
+            surfaces,
         }
     }
 
@@ -88,21 +111,54 @@ impl GameState {
 
         for ball in &mut self.balls {
             ball.apply_velocity(delta);
-            // TODO: resolve collisions
-            // TODO: clamp speed
+
+            for paddle in &self.paddles {
+                let surface = paddle.surface(ball.position);
+                // println!("{:?}", surface);
+                if check_collision(ball, &surface) {
+                    // TODO: resolve collision
+                    // ball.velocity *= -1.0;
+                    ball.velocity *= 0.0;
+                    println!("COLLISION DETECTED:\n{}\n{:?}\n\n", ball.position, &surface);
+
+                }
+            }
+
+            for surface in &self.surfaces {
+                // TODO; resolve collisions
+            }
+
+            // TODO: clamp speed after collision resolution
         }
 
-        let y_movement = (time * std::f32::consts::PI * 0.3).sin();
-        println!("{}", y_movement);
-        for paddle in &mut self.paddles {
-           paddle.move_y(y_movement);
-        }
+        // let y_movement = (time * std::f32::consts::PI * 0.3).sin();
+        // println!("{}", y_movement);
+        // for paddle in &mut self.paddles {
+        //    paddle.move_y(y_movement);
+        // }
     }
 
-    fn resolve_collisions(&mut self, ball: &Ball, ) {
-        // ceiling surface should be Vec2(1.0, -1.0) for surface normal pointing down.
-        // floor surface should be Vec2(-1.0, 1.0) for surface normal pointing up
+
+}
+
+fn check_collision(ball: &Ball, surface: &Surface) -> bool {
+    // ceiling surface should be Vec2(1.0, -1.0) for surface normal pointing down.
+    // floor surface should be Vec2(-1.0, 1.0) for surface normal pointing up
+    let pos = ball.position;
+    let closest = surface.find_closest_point(&pos);
+    let distance = glm::distance(&closest, &pos);
+    // let distance = (((closest.x - pos.x).powi(2)) + ((closest.y - pos.x).powi(2))).sqrt();
+    // println!("{}, {} ({})", distance, ball.position, ball.radius);
+
+    if distance < ball.radius * 10.0f32 {
+        println!("Approaching surface: {} ", distance);
     }
+
+    if distance <= ball.radius {
+        return true;
+    }
+
+    false
 }
 
 pub struct Paddle {
@@ -129,6 +185,16 @@ static PADDLE_VERTICES: [f32;30] = [
     X1_PADDLE, Y1_PADDLE,  1.0,  1.0,  1.0,
     X2_PADDLE, Y2_PADDLE,  1.0,  1.0,  1.0,
     X1_PADDLE, Y2_PADDLE,  1.0,  1.0,  1.0,
+];
+
+static QUAD_VERTICES: [f32;30] = [
+    -1.0, -1.0,  1.0,  1.0,  1.0,
+     1.0,  1.0,  1.0,  1.0,  1.0,
+     1.0, -1.0,  1.0,  1.0,  1.0,
+
+    -1.0, -1.0,  1.0,  1.0,  1.0,
+     1.0,  1.0,  1.0,  1.0,  1.0,
+    -1.0,  1.0,  1.0,  1.0,  1.0,
 ];
 
 impl Paddle {
@@ -175,18 +241,11 @@ impl Paddle {
         );
     }
 
-    // TODO: fix this so that surface is relative to another object instead of hardcoded left and
-    // right. Currently the left paddle will always use the right edge for the surface and right
-    // paddle will always use left edge for the surface. A surface should be relative to another
-    // object (ball in our case). If the object is the right of this paddle use right edge, if the object
-    // is to the left of this paddle use left edge, above us. For regular pong only vertical
-    // surfaces are relevant. Maybe a better version would be to construct a list of surfaces from
+    // Maybe a better version would be to construct a list of surfaces from
     // each object and just do collision resolution for each surface. Might have funny cases for
     // corner hits and such that would make this interesting...
-    // New parameter should be a position vector that we can compare to our current pos.
-    // let dir = (incoming.x - self.pos.x).signum()
-    fn surface(&self) -> Surface {
-        let direction = self.position.x.signum();
+    fn surface(&self, target_pos: glm::Vec2) -> Surface {
+        let direction = (target_pos.x - self.position.x).signum();
         let y_offset = self.height / 2.0f32;
         let x_offset = self.width / 2.0f32;
 
@@ -196,7 +255,7 @@ impl Paddle {
         a.y = self.position.y - y_offset;
         b.y = self.position.y + y_offset;
 
-        let x = self.position.x + (direction * -x_offset);
+        let x = self.position.x + (direction * x_offset);
         a.x = x;
         b.x = x;
 
@@ -204,21 +263,16 @@ impl Paddle {
     }
 }
 
-struct Surface {
-    a: glm::Vec2,
-    b: glm::Vec2,
-}
-
 pub struct Ball {
     id: u64,
     radius: f32,
     position: glm::Vec2,
     velocity: glm::Vec2, // (speed, angle)
-    vertices: [f32;5],
+    vertices: [f32;30],
 }
 
 static BALL_VERTICES: [f32;5] = [
-    0.0, 0.0, 1.0, 1.0, 1.0,
+    0.0, 0.0, 1.0, 0.0, 0.0,
 ];
 
 impl Ball {
@@ -227,8 +281,8 @@ impl Ball {
             id,
             radius,
             position: glm::Vec2::new(0.0, 0.0),
-            velocity: glm::Vec2::new(0.5, 0.5),
-            vertices: BALL_VERTICES.clone(),
+            velocity: glm::Vec2::new(-0.5, 0.0),
+            vertices: QUAD_VERTICES.clone(),
         }
     }
 
@@ -255,6 +309,8 @@ impl Ball {
     fn apply_velocity(&mut self, delta: f32) {
         self.position += self.velocity * delta;
     }
+
+    
 }
 
 fn clamp_position_2d(pos: glm::Vec2, x_min: f32, x_max: f32, y_min: f32, y_max: f32, x_offset: f32, y_offset: f32) -> glm::Vec2 {
@@ -289,7 +345,9 @@ pub struct Renderer {
 
     ball_data: HashMap<u64, (NativeBuffer, NativeVertexArray)>,
     ball_mvp: NativeUniformLocation,
+    ball_resolution: NativeUniformLocation,
     ball_radius: NativeUniformLocation,
+    ball_center: NativeUniformLocation,
 }
 
 impl Renderer {
@@ -320,17 +378,22 @@ impl Renderer {
                 paddle_data.insert(paddle.id(), vertexes);
             }
 
-            let ball_program = init_program(&gl, BALL_VSHADER_SOURCE, BALL_FSHADER_SOURCE);
+            // let ball_program = init_program(&gl, BALL_VSHADER_SOURCE, BALL_FSHADER_SOURCE);
+            let ball_program = init_program(&gl, VERTEX_SHADER_SOURCE, BALL_FSHADER_SOURCE_V2);
 
             gl.use_program(Some(ball_program));
-            let ball_pos = gl.get_attrib_location(ball_program, "ballPosition")
+            let ball_pos = gl.get_attrib_location(ball_program, "position")
                 .expect("Failed to find ball position uniform");
-            let ball_col = gl.get_attrib_location(ball_program, "ballColor")
+            let ball_col = gl.get_attrib_location(ball_program, "color")
                 .expect("Failed to find ball color uniform localtion");
-            let ball_radius = gl.get_uniform_location(ball_program, "u_ballRadius")
+            let ball_radius = gl.get_uniform_location(ball_program, "u_BallRadius")
                 .expect("Failed to find ball radius uniform location");
-            let ball_mvp = gl.get_uniform_location(ball_program, "u_ballMVP")
+            let ball_mvp = gl.get_uniform_location(ball_program, "u_MVP")
                 .expect("Failed to find ball MVP uniform location");
+            let ball_resolution = gl.get_uniform_location(ball_program, "u_Resolution")
+                .expect("Failed to find screen resolution uniform location");
+            let ball_center = gl.get_uniform_location(ball_program, "u_Center")
+                .expect("Failed to find u_Center shader uniform");
 
             let mut ball_data = HashMap::new();
             for ball in game_state.balls() {
@@ -352,6 +415,8 @@ impl Renderer {
                 ball_data,
                 ball_mvp,
                 ball_radius,
+                ball_resolution,
+                ball_center,
             }
         }
     }
@@ -401,6 +466,7 @@ impl Renderer {
         unsafe {
             for ball in balls {
                 if let Some((_, vao)) = self.ball_data.get(&ball.id()) {
+                    // let position = glm::Vec2::new(0.94, 0.0); // TODO: safe position access
                     let position = &ball.position; // TODO: safe position access
                     let ratio: f32 = self.width as f32 / self.height as f32; // TODO: only do this
                                                                              // once per loop, pass
@@ -413,12 +479,15 @@ impl Renderer {
                     );
 
                     let p = self.ortho_2d(ratio);
+                    // let mvp = p * glm::Mat4::identity();
                     let mvp = p * m;
 
                     self.gl.uniform_matrix_4_f32_slice(Some(&self.ball_mvp), false, mvp.as_slice());
+                    self.gl.uniform_2_f32(Some(&self.ball_resolution), self.width as f32, self.height as f32);
                     self.gl.uniform_1_f32(Some(&self.ball_radius), ball.radius);
+                    self.gl.uniform_2_f32(Some(&self.ball_center), pos.x, pos.y);
                     self.gl.bind_vertex_array(Some(*vao));
-                    self.gl.draw_arrays(POINTS, 0, 1);
+                    self.gl.draw_arrays(TRIANGLES, 0, 6);
                 }
             }
         }
@@ -492,7 +561,7 @@ unsafe fn init_shader(gl: &Context, shader_type: u32, shader_source: &str) -> Sh
     gl.compile_shader(shader);
 
     if !gl.get_shader_compile_status(shader) {
-        panic!("{}", gl.get_shader_info_log(shader));
+        panic!("{}\n{}", gl.get_shader_info_log(shader), shader_source);
     } else {
         shader
     }
@@ -542,14 +611,15 @@ unsafe fn create_paddle_buffer(gl: &Context, pos_loc: u32, col_loc: u32, vertice
 }
 
 const VERTEX_SHADER_SOURCE: &str = "
-#version 100
-// precision mediump float;
+#version 330 core
+precision mediump float;
 
 uniform mat4 u_MVP;
+
 attribute vec2 position;
 attribute vec3 color;
 
-varying vec3 v_color;
+out vec3 v_color;
 
 void main() {
     gl_Position = u_MVP * vec4(position, 0.0, 1.0);
@@ -558,33 +628,13 @@ void main() {
 \0";
 
 const FRAGMENT_SHADER_SOURCE: &str = "
-#version 100
+#version 330 core
 precision mediump float;
 
-varying vec3 v_color;
+in vec3 v_color;
 
 void main() {
     gl_FragColor = vec4(v_color, 1.0);
-}
-\0";
-
-const BALL_VSHADER_SOURCE: &str = "
-#version 100
-
-precision mediump float;
-
-uniform mat4 u_ballMVP;
-uniform float u_ballRadius;
-
-attribute vec2 ballPosition;
-attribute vec3 ballColor;
-
-varying vec3 v_color;
-
-void main() {
-    gl_Position = u_ballMVP * vec4(ballPosition, 0.0, 1.0);
-    gl_PointSize = u_ballRadius * 2.0; // diameter
-    v_color = ballColor;
 }
 \0";
 
@@ -603,6 +653,31 @@ void main() {
         discard;
 
     gl_FragColor = vec4(v_color, alpha);
+}
+\0";
+
+const BALL_FSHADER_SOURCE_V2: &str = "
+#version 330 core
+precision mediump float;
+
+uniform float u_BallRadius;
+uniform vec2 u_Resolution;
+uniform vec2 u_Center;
+
+in vec3 v_color;
+// in vec2 v_pos;
+
+void main() {
+    vec2 uv = (gl_FragCoord.xy / u_Resolution.xy) * 2.0 - 1.0;
+    float aspect = u_Resolution.x / u_Resolution.y;
+    uv.x *= aspect;
+    // float dist = length(uv);
+    float dist = distance(u_Center, uv);
+
+    if (dist > u_BallRadius)
+        discard;
+    
+    gl_FragColor = vec4(v_color, 1.0);
 }
 \0";
 
@@ -680,4 +755,4 @@ void main() {
         out_color = vec4(0.0, 0.0, 0.0, 0.0);
     }
 }
-";
+\0";
