@@ -6,7 +6,7 @@ use glutin::api::glx;
 use glutin_winit::{DisplayBuilder, GlWindow};
 use winit::application::{ApplicationHandler};
 use winit::event_loop::EventLoop;
-use winit::event::{KeyEvent, WindowEvent};
+use winit::event::{KeyEvent, WindowEvent, DeviceEvent, ElementState};
 use winit:: window::{Window, WindowAttributes};
 use winit::raw_window_handle::HasWindowHandle;
 use winit::keyboard::{Key, NamedKey};
@@ -139,11 +139,21 @@ impl ApplicationHandler for App {
                     game.resize(size.width as i32, size.height as i32);
                 }
             },
-            WindowEvent::CloseRequested
-                | WindowEvent::KeyboardInput {
-                    event: KeyEvent { logical_key: Key::Named(NamedKey::Escape), .. },
-                    ..
-                } => event_loop.exit(),
+            WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::KeyboardInput { device_id, event, is_synthetic } => {
+                let key = &event.logical_key;
+                match key {
+                    Key::Named(NamedKey::Escape)  => event_loop.exit(),
+                    _ => {
+                        let game = self.game.as_mut().unwrap();
+                        game.handle_keyboard(event); 
+                    }
+                }
+            },
+            WindowEvent::CursorMoved { device_id, position } => {
+                let game = self.game.as_mut().unwrap();
+                game.update_cursor(position.x, position.y);
+            },
             _ => { },
         } 
     }

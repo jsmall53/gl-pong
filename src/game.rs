@@ -4,30 +4,49 @@ use renderer::*;
 pub mod physics;
 use physics::*;
 
+pub mod input;
+use input::{InputController, PongKey};
+
 use std::collections::HashMap;
 use std::time::{Instant, Duration};
 use std::ops::Deref;
 use std::cell::RefCell;
 
+use winit::event::KeyEvent;
 use glow::*;
 use glutin::prelude::GlDisplay;
 use nalgebra_glm as glm;
 
+struct KeyMap {
+    move_up: Vec<PongKey>,
+    move_down: Vec<PongKey>,
+    pause: Vec<PongKey>,
+    unpause: Vec<PongKey>,
+}
+
 pub struct Game {
     renderer: Renderer,
+    input: InputController,
     game_state: GameState,
+    scene_state: SceneState,
+    menu_state: MenuState,
+    players: u8,
     frame_counter: FrameCounter,
 }
 
 impl Game {
     pub fn new<D: GlDisplay>(gl_display: &D, width: i32, height: i32) -> Self {
-        let game_state = GameState::new();
+        let players = 1;
+        let game_state = GameState::new(players);
         let renderer = Renderer::new(gl_display, width, height, &game_state);
-        println!("{:?}", renderer);
 
         Game {
             renderer,
+            input: InputController::new(),
+            players: 1, // Update this with number of players
             game_state,
+            scene_state: SceneState::Playing, // TODO: FIX THIS TO DEFAULT TO MENU
+            menu_state: MenuState::PlayerSelect,
             frame_counter: FrameCounter::new(),
         }
     }
@@ -36,11 +55,44 @@ impl Game {
         self.renderer.resize(width, height);
     }
 
+    pub fn update_cursor(&mut self, x: f64, y: f64) {
+        let n_x = (x / self.renderer.width as f64) * 2.0f64 - 1.0f64;
+        let n_y = (y / self.renderer.height as f64) * 2.0f64 - 1.0f64;
+    }
+
+    pub fn handle_keyboard(&mut self, event: KeyEvent) {
+        self.input.handle_keyboard(event)
+    }
+
     pub fn update(&mut self) {
+        // Update frame every loop no matter what.
         let delta = self.update_frames();
 
-        self.game_state.update(delta);
-        self.renderer.draw(&self.game_state);
+        match self.scene_state {
+            SceneState::Menu => {
+                match self.menu_state {
+                    MenuState::PlayerSelect =>  { },
+                    MenuState::WinScreen => { },
+                }
+            },
+            SceneState::Pause => {
+                if self.input.is_key_pressed(PongKey::Enter) {
+                    self.scene_state = SceneState::Playing;
+                    self.game_state.unpause();
+                } else {
+                    self.renderer.draw(&self.game_state);
+                }
+            }
+            SceneState::Playing => {
+                if self.input.is_key_pressed(PongKey::Space) {
+                    self.scene_state = SceneState::Pause;
+                    self.game_state.pause();
+                } else {
+                    self.game_state.update(delta, &self.input);
+                    self.renderer.draw(&self.game_state);
+                }
+            },
+        };
     }
 
     fn update_frames(&mut self) -> f32 {
@@ -52,28 +104,51 @@ impl Game {
         delta
     }
 }
+ 
+enum SceneState {
+    Menu,
+    Playing,
+    Pause,
+}
 
-/*
- * Ball is going to need velocity, acceleration,
- * position, direction(?)
- * */
+enum MenuState {
+    PlayerSelect,
+    WinScreen,
+}
 
 struct GameState {
     start_time: Instant,
+    paused: bool,
+    left_paddle: usize,
+    right_paddle: usize,
+    left_keymap: Option<KeyMap>,
+    right_keymap: Option<KeyMap>,
     paddles: Vec<Paddle>,
     balls: Vec<Ball>,
     surfaces: Vec<Surface>,
 }
 
 impl GameState {
-    fn new() -> Self {
+    fn new(players: u8) -> Self {
         let mut next_item_id = 0; // this is so stupid lol
                                   //
         // Paddles.
         let x_pos = 0.99;
-        let left_paddle = Paddle::new(next_item_id, glm::Vec2::new(-x_pos + (PADDLE_WIDTH / 2.0f32), 0.0), PADDLE_WIDTH, PADDLE_HEIGHT);
+        let left_paddle = Paddle::new(
+            next_item_id, 
+            glm::Vec2::new(-x_pos + (PADDLE_WIDTH / 2.0f32), 0.0), 
+            PADDLE_WIDTH, 
+            PADDLE_HEIGHT, 
+            false,
+        );
         next_item_id += 1;
-        let right_paddle = Paddle::new(next_item_id, glm::Vec2::new(x_pos - (PADDLE_WIDTH / 2.0f32), 0.0), PADDLE_WIDTH, PADDLE_HEIGHT);
+        let right_paddle = Paddle::new(
+            next_item_id, 
+            glm::Vec2::new(x_pos - (PADDLE_WIDTH / 2.0f32), 0.0), 
+            PADDLE_WIDTH, 
+            PADDLE_HEIGHT, 
+            true,
+        );
         next_item_id += 1;
 
         // Balls.
@@ -88,14 +163,66 @@ impl GameState {
             a: glm::Vec2::new(1.0, 1.0),
             b: glm::Vec2::new(-1.0, 1.0),
         };
+        
+        let left_keymap = match players {
+            1 => {
+                Some(KeyMap {
+                    move_down: vec![PongKey::ArrowDown, PongKey::A, PongKey::J],
+                    move_up: vec![PongKey::ArrowUp, PongKey::Q, PongKey::K],
+                    pause: vec![PongKey::Space],
+                    unpause: vec![PongKey::Enter],
+                })
+            },
+            2 => { 
+                Some(KeyMap {
+                    move_down: vec![PongKey::A, PongKey::J],
+                    move_up: vec![PongKey::Q, PongKey::K],
+                    pause: vec![PongKey::Space],
+                    unpause: vec![PongKey::Enter],
+                })
+            },
+            _ => None
+        };
+
+        let right_keymap = match players {
+            2 => {
+                Some(KeyMap {
+                    move_down: vec![PongKey::ArrowDown],
+                    move_up: vec![PongKey::ArrowUp],
+                    pause: vec![PongKey::Space],
+                    unpause: vec![PongKey::Enter],
+                })
+            }
+            _ => None,
+        };
+
         let surfaces = vec![floor, ceiling];
+        let paddles = vec![left_paddle, right_paddle];
 
         GameState {
             start_time: Instant::now(),
-            paddles: vec![left_paddle, right_paddle],
+            paused: false,
+            paddles,
             balls: vec![ball],
             surfaces,
+            left_paddle: 0,
+            right_paddle: 1,
+            left_keymap,
+            right_keymap,
         }
+    }
+
+    fn reset(&mut self) {
+        for paddle in &mut self.paddles {
+            paddle.reset();
+        }
+
+        for ball in &mut self.balls {
+            ball.reset();
+        }
+
+        self.paused = false;
+        self.start_time = Instant::now();
     }
 
     fn paddles(&self) -> &[Paddle] {
@@ -106,39 +233,60 @@ impl GameState {
         &self.balls
     }
 
-    fn update(&mut self, delta: f32) {
+    fn pause(&mut self) {
+        if self.paused {
+            return;
+        }
+        self.paused = true;
+    }
+
+    fn unpause(&mut self) {
+        if !self.paused {
+            return;
+        }
+        self.paused = false;
+    }
+
+    fn update(&mut self, delta: f32, input: &InputController) {
         let time = self.start_time.elapsed().as_secs_f32();
+
+        if self.paused {
+            return;
+        }
 
         for ball in &mut self.balls {
             ball.apply_velocity(delta);
 
             for paddle in &self.paddles {
                 let surface = paddle.surface(ball.position);
-                // println!("{:?}", surface);
-                if check_collision(ball, &surface) {
-                    // TODO: resolve collision
-                    // ball.velocity *= -1.0;
-                    ball.velocity *= 0.0;
-                    println!("COLLISION DETECTED:\n{}\n{:?}\n\n", ball.position, &surface);
-
-                }
+                resolve_collision(ball, &surface);
             }
 
             for surface in &self.surfaces {
-                // TODO; resolve collisions
+                resolve_collision(ball, &surface);
             }
 
             // TODO: clamp speed after collision resolution
         }
 
-        // let y_movement = (time * std::f32::consts::PI * 0.3).sin();
-        // println!("{}", y_movement);
-        // for paddle in &mut self.paddles {
-        //    paddle.move_y(y_movement);
-        // }
+        if let Some(left_paddle) = self.paddles.get_mut(self.left_paddle) {
+            if input.is_key_pressed(PongKey::ArrowDown) {
+                left_paddle.move_down();
+            } else if input.is_key_pressed(PongKey::ArrowUp) {
+                left_paddle.move_up();
+            }
+        }
     }
+}
 
-
+fn resolve_collision(ball: &mut Ball, surface: &Surface) {
+    if check_collision(ball, &surface) {
+        // TODO: resolve collision
+        // ball.velocity *= -1.0;
+        ball.velocity = calculate_bounce_velocity(surface, ball.velocity);
+        // ball.velocity *= 0.0;
+        // println!("COLLISION DETECTED:\n{}\n\n", ball.velocity);
+    }
 }
 
 fn check_collision(ball: &Ball, surface: &Surface) -> bool {
@@ -150,9 +298,9 @@ fn check_collision(ball: &Ball, surface: &Surface) -> bool {
     // let distance = (((closest.x - pos.x).powi(2)) + ((closest.y - pos.x).powi(2))).sqrt();
     // println!("{}, {} ({})", distance, ball.position, ball.radius);
 
-    if distance < ball.radius * 10.0f32 {
-        println!("Approaching surface: {} ", distance);
-    }
+    // if distance < ball.radius * 10.0f32 {
+    //     println!("Approaching surface: {} ", distance);
+    // }
 
     if distance <= ball.radius {
         return true;
@@ -161,12 +309,25 @@ fn check_collision(ball: &Ball, surface: &Surface) -> bool {
     false
 }
 
+fn calculate_bounce_velocity(surface: &Surface, velocity: glm::Vec2) -> glm::Vec2 {
+    let v_dir = surface.b - surface.a;
+    let mut normal = glm::Vec2::new(-v_dir.y, v_dir.x);
+    normal = normal.normalize();
+    
+    let dot = normal.dot(&velocity);
+    let vx = velocity.x - 2.0f32 * dot * normal.x;
+    let vy = velocity.y - 2.0f32 * dot * normal.y;
+
+    glm::Vec2::new(vx, vy)
+}
+
 pub struct Paddle {
     id: u64,
     width: f32,
     height: f32,
     position: glm::Vec2,
     vertices: [f32;30],
+    auto: bool,
 }
 
 static X1_PADDLE: f32 = -0.015;
@@ -198,7 +359,7 @@ static QUAD_VERTICES: [f32;30] = [
 ];
 
 impl Paddle {
-    fn new(id: u64, position: glm::Vec2, width: f32, height: f32) -> Self {
+    fn new(id: u64, position: glm::Vec2, width: f32, height: f32, auto: bool) -> Self {
 
         let mut paddle = Paddle {
             id,
@@ -206,10 +367,15 @@ impl Paddle {
             height,
             position,
             vertices: PADDLE_VERTICES.clone(), 
+            auto,
         };
         paddle.clamp_position();
         
         return paddle
+    }
+
+    fn reset(&mut self) {
+        self.move_y(0.0f32);
     }
 
     fn id(&self) -> u64 {
@@ -218,6 +384,30 @@ impl Paddle {
 
     fn vertices(&self) -> &[f32] {
         &self.vertices
+    }
+
+    fn apply_velocity(&mut self, target_y: f32, delta: f32) {
+        let diff = (target_y - self.position.y);
+        if diff.abs() <= 0.05 {
+            return;
+        }
+        let dir = (target_y - self.position.y).signum();
+        // update y velo to move in target direction,
+        let velocity = glm::Vec2::new(0.0, dir * 3.0f32);
+        // println!("Paddle velo: {:?}\ndiff: {:?}", velocity, diff);
+        self.position += velocity * delta;
+        // clamp max speed, should be significantly faster than the ball
+
+        self.clamp_position();
+    }
+
+    const MOVE_AMT: f32 = 0.03;
+    fn move_down(&mut self) {
+        self.move_y(self.position.y - Self::MOVE_AMT);
+    }
+
+    fn move_up(&mut self) {
+        self.move_y(self.position.y + Self::MOVE_AMT);
     }
 
     fn move_y(&mut self, y_pos: f32) {
@@ -281,9 +471,13 @@ impl Ball {
             id,
             radius,
             position: glm::Vec2::new(0.0, 0.0),
-            velocity: glm::Vec2::new(-0.5, 0.0),
+            velocity: glm::Vec2::new(-0.5, 0.2),
             vertices: QUAD_VERTICES.clone(),
         }
+    }
+
+    fn reset(&mut self) {
+        self.position = glm::Vec2::new(0.0, 0.0);
     }
 
     fn id(&self) -> u64 {
@@ -466,7 +660,7 @@ impl Renderer {
         unsafe {
             for ball in balls {
                 if let Some((_, vao)) = self.ball_data.get(&ball.id()) {
-                    // let position = glm::Vec2::new(0.94, 0.0); // TODO: safe position access
+                    // let position = glm::Vec2::new(-0.94, 0.0); // TODO: safe position access
                     let position = &ball.position; // TODO: safe position access
                     let ratio: f32 = self.width as f32 / self.height as f32; // TODO: only do this
                                                                              // once per loop, pass
@@ -483,8 +677,8 @@ impl Renderer {
                     let mvp = p * m;
 
                     self.gl.uniform_matrix_4_f32_slice(Some(&self.ball_mvp), false, mvp.as_slice());
-                    self.gl.uniform_2_f32(Some(&self.ball_resolution), self.width as f32, self.height as f32);
                     self.gl.uniform_1_f32(Some(&self.ball_radius), ball.radius);
+                    self.gl.uniform_2_f32(Some(&self.ball_resolution), self.width as f32, self.height as f32);
                     self.gl.uniform_2_f32(Some(&self.ball_center), pos.x, pos.y);
                     self.gl.bind_vertex_array(Some(*vao));
                     self.gl.draw_arrays(TRIANGLES, 0, 6);
