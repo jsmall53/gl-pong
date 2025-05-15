@@ -51,6 +51,7 @@ impl Game {
     pub fn update_cursor(&mut self, x: f64, y: f64) {
         let n_x = (x / self.renderer.width as f64) * 2.0f64 - 1.0f64;
         let n_y = (y / self.renderer.height as f64) * 2.0f64 - 1.0f64;
+        self.input.handle_cursor(n_x as f32, n_y as f32);
     }
 
     pub fn handle_keyboard(&mut self, event: KeyEvent) {
@@ -68,14 +69,13 @@ impl Game {
                 }
             },
             SceneState::Playing => {
-                if self.input.is_key_pressed(&PongKey::Enter) {
-                    self.game_data.unpause();
-                } else if self.input.is_key_pressed(&PongKey::Space) {
+                if self.input.is_key_pressed(&PongKey::Space) {
                     self.game_data.pause();
-                } else {
-                    self.game_data.update(delta, &self.input);
+                } else if self.input.is_key_pressed(&PongKey::Enter) {
+                    self.game_data.unpause();
                 }
 
+                self.game_data.update(delta, &self.input);
                 self.renderer.draw(&self.game_data);
             },
         };
@@ -206,11 +206,19 @@ impl GameData {
     }
 
     fn pause(&mut self) {
-        self.state = GameState::Pause;
+        match self.state {
+            GameState::Playing => 
+                self.state = GameState::Pause,
+            _ => { },
+        }
     }
 
     fn unpause(&mut self) {
-        self.state = GameState::Playing;
+        match self.state {
+            GameState::Pause => 
+                self.state = GameState::Playing, 
+            _ => {},
+        }
     }
 
     fn update(&mut self, delta: f32, input: &InputController) {

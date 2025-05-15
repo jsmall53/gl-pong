@@ -1,5 +1,6 @@
 use winit::event::{KeyEvent, ElementState};
 use winit::keyboard::{Key, NamedKey, SmolStr};
+use nalgebra_glm as glm;
 
 
 pub enum PongKey {
@@ -31,13 +32,20 @@ pub struct KeyMap {
 
 pub struct InputController {
     key_state: u32,
+    cursor_pos: glm::Vec2,
 }
 
 impl InputController {
     pub fn new() -> Self {
         InputController {
             key_state: 0,
+            cursor_pos: glm::Vec2::new(0.0, 0.0),
         }
+    }
+
+    pub fn handle_cursor(&mut self, x: f32, y: f32) {
+        self.cursor_pos.x = x;
+        self.cursor_pos.y = y;
     }
 
     pub fn handle_keyboard(&mut self, event: KeyEvent) {
