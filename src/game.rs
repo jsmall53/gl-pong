@@ -69,12 +69,6 @@ impl Game {
                 }
             },
             SceneState::Playing => {
-                if self.input.is_key_pressed(&PongKey::Space) {
-                    self.game_data.pause();
-                } else if self.input.is_key_pressed(&PongKey::Enter) {
-                    self.game_data.unpause();
-                }
-
                 self.game_data.update(delta, &self.input);
                 self.renderer.draw(&self.game_data);
             },
@@ -265,10 +259,17 @@ impl GameData {
                         None => { },
                     }
                 }
+
+                if input.is_key_pressed(&PongKey::Space) {
+                    self.pause();
+                    return;
+                }
             },
             GameState::Pause => 
             { 
-
+                if input.is_key_pressed(&PongKey::Enter) {
+                    self.unpause();
+                }
             },
             GameState::WinScreen => { },
         };
