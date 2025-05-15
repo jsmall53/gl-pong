@@ -5,7 +5,7 @@ pub mod physics;
 use physics::*;
 
 pub mod input;
-use input::{InputController, PongKey};
+use input::{InputController, PongKey, KeyMap};
 
 use std::collections::HashMap;
 use std::time::{Instant, Duration};
@@ -16,13 +16,6 @@ use winit::event::KeyEvent;
 use glow::*;
 use glutin::prelude::GlDisplay;
 use nalgebra_glm as glm;
-
-struct KeyMap {
-    move_up: Vec<PongKey>,
-    move_down: Vec<PongKey>,
-    pause: Vec<PongKey>,
-    unpause: Vec<PongKey>,
-}
 
 pub struct Game {
     renderer: Renderer,
@@ -76,7 +69,7 @@ impl Game {
                 }
             },
             SceneState::Pause => {
-                if self.input.is_key_pressed(PongKey::Enter) {
+                if self.input.is_key_pressed(&PongKey::Enter) {
                     self.scene_state = SceneState::Playing;
                     self.game_state.unpause();
                 } else {
@@ -84,7 +77,7 @@ impl Game {
                 }
             }
             SceneState::Playing => {
-                if self.input.is_key_pressed(PongKey::Space) {
+                if self.input.is_key_pressed(&PongKey::Space) {
                     self.scene_state = SceneState::Pause;
                     self.game_state.pause();
                 } else {
@@ -169,16 +162,12 @@ impl GameState {
                 Some(KeyMap {
                     move_down: vec![PongKey::ArrowDown, PongKey::A, PongKey::J],
                     move_up: vec![PongKey::ArrowUp, PongKey::Q, PongKey::K],
-                    pause: vec![PongKey::Space],
-                    unpause: vec![PongKey::Enter],
                 })
             },
             2 => { 
                 Some(KeyMap {
                     move_down: vec![PongKey::A, PongKey::J],
                     move_up: vec![PongKey::Q, PongKey::K],
-                    pause: vec![PongKey::Space],
-                    unpause: vec![PongKey::Enter],
                 })
             },
             _ => None
@@ -189,8 +178,6 @@ impl GameState {
                 Some(KeyMap {
                     move_down: vec![PongKey::ArrowDown],
                     move_up: vec![PongKey::ArrowUp],
-                    pause: vec![PongKey::Space],
-                    unpause: vec![PongKey::Enter],
                 })
             }
             _ => None,
@@ -213,15 +200,15 @@ impl GameState {
     }
 
     fn reset(&mut self) {
-        for paddle in &mut self.paddles {
-            paddle.reset();
-        }
+        // for paddle in &mut self.paddles {
+        //     paddle.reset();
+        // }
 
         for ball in &mut self.balls {
             ball.reset();
         }
 
-        self.paused = false;
+        // self.paused = false;
         self.start_time = Instant::now();
     }
 
@@ -267,13 +254,28 @@ impl GameState {
             }
 
             // TODO: clamp speed after collision resolution
+            
+            if ball.position.x > 1.0f32 {
+                // SCORE FOR LEFT PADDLE
+                self.reset();
+                return;
+            } else if ball.position.x < -1.0f32 {
+                // SCORE FOR RIGHT PADDLE
+                self.reset();
+                return;
+            }
         }
 
         if let Some(left_paddle) = self.paddles.get_mut(self.left_paddle) {
-            if input.is_key_pressed(PongKey::ArrowDown) {
-                left_paddle.move_down();
-            } else if input.is_key_pressed(PongKey::ArrowUp) {
-                left_paddle.move_up();
+            match &self.left_keymap {
+                Some(map) => { 
+                    if input.any_pressed(&map.move_down) {
+                         left_paddle.move_down();
+                    } else if input.any_pressed(&map.move_up) {
+                         left_paddle.move_up();
+                    }
+                },
+                None => { },
             }
         }
     }
@@ -478,6 +480,7 @@ impl Ball {
 
     fn reset(&mut self) {
         self.position = glm::Vec2::new(0.0, 0.0);
+        self.velocity = glm::Vec2::new(-0.5, 0.2);
     }
 
     fn id(&self) -> u64 {

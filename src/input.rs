@@ -24,6 +24,10 @@ const KEY_ENTER: u32        = 1 << 7;
 
 const MASK: u32             = 0xFFFF;
 
+pub struct KeyMap {
+    pub move_up: Vec<PongKey>,
+    pub move_down: Vec<PongKey>,
+}
 
 pub struct InputController {
     key_state: u32,
@@ -43,9 +47,19 @@ impl InputController {
         }
     }
 
-    pub fn is_key_pressed(&self, key: PongKey) -> bool {
+    pub fn is_key_pressed(&self, key: &PongKey) -> bool {
         let mask = Self::mask_from_pong_key(key);
         self.key_state & mask > 0
+    }
+
+    pub fn any_pressed(&self, keys: &[PongKey]) -> bool {
+        for key in keys {
+            if self.is_key_pressed(key) {
+                return true;
+            }
+        }
+
+        false
     }
 
     fn mask_from_winit_key(key: winit::keyboard::Key) -> u32 {
@@ -71,7 +85,7 @@ impl InputController {
         }
     }
     
-    fn mask_from_pong_key(key: PongKey) -> u32 {
+    fn mask_from_pong_key(key: &PongKey) -> u32 {
         match key {
             PongKey::Space => { KEY_SPACE },
             PongKey::ArrowUp => { KEY_ARROW_UP },
@@ -110,3 +124,5 @@ impl InputController {
         // println!("KEY_STATE AFTER: {:#8b}", self.key_state);
     }
 }
+
+
