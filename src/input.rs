@@ -3,6 +3,8 @@ use winit::keyboard::{Key, NamedKey, SmolStr};
 use nalgebra_glm as glm;
 
 
+
+
 pub enum PongKey {
     Space,
     ArrowUp,
@@ -13,6 +15,9 @@ pub enum PongKey {
     A,
     Enter,
 }
+
+
+
 
 const KEY_SPACE: u32        = 1 << 0;
 const KEY_ARROW_UP: u32     = 1 << 1;
@@ -25,15 +30,71 @@ const KEY_ENTER: u32        = 1 << 7;
 
 const MASK: u32             = 0xFFFF;
 
+
+
+
+fn mask_from_winit_key(key: winit::keyboard::Key) -> u32 {
+    match key {
+        Key::Named(NamedKey::Space) => { KEY_SPACE },
+        Key::Named(NamedKey::ArrowUp) => { KEY_ARROW_UP },
+        Key::Named(NamedKey::ArrowDown) => { KEY_ARROW_DOWN },
+        Key::Named(NamedKey::Enter) => { KEY_ENTER },
+        Key::Character(character) => {
+            if character == "k" || character == "K" {
+                KEY_K
+            } else if character == "j" || character == "J" {
+                KEY_J
+            } else if character == "q" || character == "Q" {
+                KEY_Q
+            } else if character == "a" || character == "A" {
+                KEY_A
+            } else {
+                0
+            }
+        },
+        _ => { 0 }
+    }
+}
+
+fn mask_from_pong_key(key: &PongKey) -> u32 {
+    match key {
+        PongKey::Space => { KEY_SPACE },
+        PongKey::ArrowUp => { KEY_ARROW_UP },
+        PongKey::ArrowDown => { KEY_ARROW_DOWN },
+        PongKey::K => { KEY_K },
+        PongKey::J => { KEY_J },
+        PongKey::Q => { KEY_Q },
+        PongKey::A => { KEY_A },
+        PongKey::Enter => { KEY_ENTER },
+    }
+}
+
+
+
+
 pub struct KeyMap {
     pub move_up: Vec<PongKey>,
     pub move_down: Vec<PongKey>,
 }
 
+
+
+
 pub struct InputController {
     key_state: u32,
     cursor_pos: glm::Vec2,
 }
+
+
+
+
+pub struct InputState {
+    key_state: u32,
+    cursor_pos: glm::Vec2,
+}
+
+
+
 
 impl InputController {
     pub fn new() -> Self {
@@ -43,68 +104,22 @@ impl InputController {
         }
     }
 
+    pub fn state(&self) -> InputState {
+        InputState::new(self.key_state, self.cursor_pos.clone())
+    }
+
     pub fn handle_cursor(&mut self, x: f32, y: f32) {
         self.cursor_pos.x = x;
         self.cursor_pos.y = y;
     }
 
     pub fn handle_keyboard(&mut self, event: KeyEvent) {
-        let mask = Self::mask_from_winit_key(event.logical_key);
+        let mask = mask_from_winit_key(event.logical_key);
         if mask != 0 {
             self.update_state(mask, event.state);
         }
     }
 
-    pub fn is_key_pressed(&self, key: &PongKey) -> bool {
-        let mask = Self::mask_from_pong_key(key);
-        self.key_state & mask > 0
-    }
-
-    pub fn any_pressed(&self, keys: &[PongKey]) -> bool {
-        for key in keys {
-            if self.is_key_pressed(key) {
-                return true;
-            }
-        }
-
-        false
-    }
-
-    fn mask_from_winit_key(key: winit::keyboard::Key) -> u32 {
-        match key {
-            Key::Named(NamedKey::Space) => { KEY_SPACE },
-            Key::Named(NamedKey::ArrowUp) => { KEY_ARROW_UP },
-            Key::Named(NamedKey::ArrowDown) => { KEY_ARROW_DOWN },
-            Key::Named(NamedKey::Enter) => { KEY_ENTER },
-            Key::Character(character) => {
-                if character == "k" || character == "K" {
-                    KEY_K
-                } else if character == "j" || character == "J" {
-                    KEY_J
-                } else if character == "q" || character == "Q" {
-                    KEY_Q
-                } else if character == "a" || character == "A" {
-                    KEY_A
-                } else {
-                    0
-                }
-            },
-            _ => { 0 }
-        }
-    }
-    
-    fn mask_from_pong_key(key: &PongKey) -> u32 {
-        match key {
-            PongKey::Space => { KEY_SPACE },
-            PongKey::ArrowUp => { KEY_ARROW_UP },
-            PongKey::ArrowDown => { KEY_ARROW_DOWN },
-            PongKey::K => { KEY_K },
-            PongKey::J => { KEY_J },
-            PongKey::Q => { KEY_Q },
-            PongKey::A => { KEY_A },
-            PongKey::Enter => { KEY_ENTER },
-        }
-    }
     /*
      *
      * 0b000000 => No key pressed,
@@ -133,4 +148,30 @@ impl InputController {
     }
 }
 
+
+
+
+impl InputState {
+    fn new(key_state: u32, cursor_pos: glm::Vec2) -> Self {
+        InputState {
+            key_state,
+            cursor_pos,
+        }
+    }
+
+    pub fn is_key_pressed(&self, key: &PongKey) -> bool {
+        let mask = mask_from_pong_key(key);
+        self.key_state & mask > 0
+    }
+
+    pub fn any_pressed(&self, keys: &[PongKey]) -> bool {
+        for key in keys {
+            if self.is_key_pressed(key) {
+                return true;
+            }
+        }
+
+        false
+    }
+}
 

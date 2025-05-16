@@ -5,7 +5,7 @@ pub mod physics;
 use physics::*;
 
 pub mod input;
-use input::{InputController, PongKey, KeyMap};
+use input::{InputController, InputState, PongKey, KeyMap};
 
 use std::collections::HashMap;
 use std::time::{Instant, Duration};
@@ -29,7 +29,7 @@ pub struct Game {
 
 impl Game {
     pub fn new<D: GlDisplay>(gl_display: &D, width: i32, height: i32) -> Self {
-        let players = 1;
+        let players = 0;
         let game_data = GameData::new(players);
         let renderer = Renderer::new(gl_display, width, height, &game_data);
 
@@ -69,7 +69,8 @@ impl Game {
                 }
             },
             SceneState::Playing => {
-                self.game_data.update(delta, &self.input);
+                let input_state = self.input.state();
+                self.game_data.update(delta, input_state);
                 self.renderer.draw(&self.game_data);
             },
         };
@@ -118,6 +119,7 @@ impl GameData {
         let left_paddle = Paddle::new(
             next_item_id, 
             glm::Vec2::new(-x_pos + (PADDLE_WIDTH / 2.0f32), 0.0), 
+            glm::Vec2::new(0.0, 1.0),
             PADDLE_WIDTH, 
             PADDLE_HEIGHT, 
             false,
@@ -126,6 +128,7 @@ impl GameData {
         let right_paddle = Paddle::new(
             next_item_id, 
             glm::Vec2::new(x_pos - (PADDLE_WIDTH / 2.0f32), 0.0), 
+            glm::Vec2::new(0.0, 1.0),
             PADDLE_WIDTH, 
             PADDLE_HEIGHT, 
             true,
@@ -215,7 +218,7 @@ impl GameData {
         }
     }
 
-    fn update(&mut self, delta: f32, input: &InputController) {
+    fn update(&mut self, delta: f32, input: InputState) {
         let time = self.start_time.elapsed().as_secs_f32();
         match &self.state {
             GameState::Starting => {
@@ -248,16 +251,7 @@ impl GameData {
                 }
 
                 for player in &mut self.players {
-                    match &player.keymap {
-                        Some(map) => { 
-                            if input.any_pressed(&map.move_down) {
-                                player.paddle.move_down();
-                            } else if input.any_pressed(&map.move_up) {
-                                player.paddle.move_up();
-                            }
-                        },
-                        None => { },
-                    }
+                    player.update(delta, &input, &self.ball);
                 }
 
                 if input.is_key_pressed(&PongKey::Space) {
@@ -334,6 +328,49 @@ impl Player {
             keymap,
         }
     }
+
+    fn reset(&mut self) {
+        self.score = 0;
+    }
+
+    fn increment_score(&mut self) {
+        self.score += 1;
+    }
+
+    fn update(&mut self, delta: f32, input: &InputState, ball: &Ball) {
+        match &self.keymap {
+            Some(map) => { 
+                if input.any_pressed(&map.move_down) {
+                    self.paddle.move_down(delta);
+                } else if input.any_pressed(&map.move_up) {
+                    self.paddle.move_up(delta);
+                }
+            },
+            None => {
+               /*
+                * This is a computer player.
+                *  - Move the paddle when the ball is moving towards my paddle
+                *  - Move the paddle in the y direction the ball is moving.
+                *
+                * */ 
+                let x_offset = 1.3f32; // TODO: 1.0 easy, 1.3, med, 1.6 hard
+                if self.paddle.position.x.signum() == ball.velocity.x.signum() && 
+                    (ball.position.x - self.paddle.position.x).abs() <= x_offset {
+                    let t = (self.paddle.position.x - ball.position.x) / ball.velocity.x;
+                    let target_y = ball.position.y + (t * ball.velocity.y);
+
+                    let y_offset = 0.05f32; // TODO: randomize this based on difficulty
+                    let pos = &ball.position;
+                    let y_diff = target_y - self.paddle.position.y;
+                    if y_diff < -y_offset {
+                        self.paddle.move_down(delta);
+                    } else if y_diff > y_offset {
+                        self.paddle.move_up(delta);
+                    }
+                }
+           },
+        }
+    }
 }
 
 pub struct Paddle {
@@ -341,8 +378,8 @@ pub struct Paddle {
     width: f32,
     height: f32,
     position: glm::Vec2,
+    velocity: glm::Vec2,
     vertices: [f32;30],
-    auto: bool,
 }
 
 static X1_PADDLE: f32 = -0.015;
@@ -374,15 +411,15 @@ static QUAD_VERTICES: [f32;30] = [
 ];
 
 impl Paddle {
-    fn new(id: u64, position: glm::Vec2, width: f32, height: f32, auto: bool) -> Self {
+    fn new(id: u64, position: glm::Vec2, velocity: glm::Vec2, width: f32, height: f32, auto: bool) -> Self {
 
         let mut paddle = Paddle {
             id,
             width,
             height,
             position,
+            velocity,
             vertices: PADDLE_VERTICES.clone(), 
-            auto,
         };
         paddle.clamp_position();
         
@@ -401,28 +438,27 @@ impl Paddle {
         &self.vertices
     }
 
-    fn apply_velocity(&mut self, target_y: f32, delta: f32) {
-        let diff = (target_y - self.position.y);
-        if diff.abs() <= 0.05 {
-            return;
-        }
-        let dir = (target_y - self.position.y).signum();
-        // update y velo to move in target direction,
-        let velocity = glm::Vec2::new(0.0, dir * 3.0f32);
-        // println!("Paddle velo: {:?}\ndiff: {:?}", velocity, diff);
-        self.position += velocity * delta;
-        // clamp max speed, should be significantly faster than the ball
+    fn apply_velocity(&mut self, delta: f32) {
+        self.position += self.velocity * delta;
 
         self.clamp_position();
     }
 
-    const MOVE_AMT: f32 = 0.03;
-    fn move_down(&mut self) {
-        self.move_y(self.position.y - Self::MOVE_AMT);
+    const MOVE_AMT: f32 = 0.02;
+    fn move_down(&mut self, delta: f32) {
+        // self.move_y(self.position.y - Self::MOVE_AMT);
+        if self.velocity.y > 0.0f32 {
+            self.velocity.y *= -1.0f32;
+        }
+        self.apply_velocity(delta);
     }
 
-    fn move_up(&mut self) {
-        self.move_y(self.position.y + Self::MOVE_AMT);
+    fn move_up(&mut self, delta: f32) {
+        // self.move_y(self.position.y + Self::MOVE_AMT);
+        if self.velocity.y < 0.0f32 {
+            self.velocity.y *= -1.0f32;
+        }
+        self.apply_velocity(delta);
     }
 
     fn move_y(&mut self, y_pos: f32) {
@@ -481,6 +517,7 @@ static BALL_VERTICES: [f32;5] = [
 ];
 
 const DEFAULT_X_VELO: f32 = -1.0f32;
+const DEFAULT_Y_VELO: f32 = 0.3;
 // TODO: randomize starting y velo, randomize -1/+1 for starting x_velo
 impl Ball {
     fn new(id: u64, radius: f32) -> Self {
@@ -488,14 +525,14 @@ impl Ball {
             id,
             radius,
             position: glm::Vec2::new(0.0, 0.0),
-            velocity: glm::Vec2::new(DEFAULT_X_VELO, 0.2),
+            velocity: glm::Vec2::new(DEFAULT_X_VELO, DEFAULT_Y_VELO),
             vertices: QUAD_VERTICES.clone(),
         }
     }
 
     fn reset(&mut self) {
         self.position = glm::Vec2::new(0.0, 0.0);
-        self.velocity = glm::Vec2::new(DEFAULT_X_VELO, 0.2);
+        self.velocity = glm::Vec2::new(DEFAULT_X_VELO, DEFAULT_Y_VELO);
     }
 
     fn id(&self) -> u64 {
