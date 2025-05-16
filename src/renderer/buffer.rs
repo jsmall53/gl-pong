@@ -6,6 +6,17 @@ use nalgebra_glm as glm;
 
 
 
+pub trait VertexArray<V: VertexBuffer> {
+    fn bind(&self);
+    fn unbind(&self);
+    fn add_vertex_buffer(&mut self, buffer: V);
+    fn get_vertex_buffers(&self) -> &[V];
+    fn set_index_buffer(&mut self);
+    fn get_index_buffer(&self); // TODO: fix return type once I figure index buffers lol
+}
+
+
+
 pub trait VertexBuffer {
     fn bind(&mut self);
     fn unbind(&mut self);
@@ -16,17 +27,17 @@ pub trait VertexBuffer {
 
 
 
-pub struct VertexArray {
+pub struct GLVertexArray {
     id: u32,
     vertex_buffer_index: u32,
-    vertex_buffers: Vec<OpenGLVertexBuffer>,
+    vertex_buffers: Vec<GLVertexBuffer>,
     index_buffer: i32, // TODO: WHAT IS THIS FOR?
 
 }
 
 
 
-pub struct OpenGLVertexBuffer {
+pub struct GLVertexBuffer {
     gl: Rc<Context>,
     vbo: NativeBuffer,
     layout: BufferLayout
@@ -149,7 +160,7 @@ impl BufferLayoutBuilder {
 
 
 
-impl OpenGLVertexBuffer {
+impl GLVertexBuffer {
     pub fn new(gl: Rc<Context>, layout: BufferLayout) -> Self {
         unsafe {
             let vbo = gl.create_buffer()
@@ -166,7 +177,7 @@ impl OpenGLVertexBuffer {
 
 
 
-impl VertexBuffer for OpenGLVertexBuffer {
+impl VertexBuffer for GLVertexBuffer {
     fn bind(&mut self) {
         unsafe {
             self.gl.bind_buffer(ARRAY_BUFFER, Some(self.vbo));
@@ -180,7 +191,10 @@ impl VertexBuffer for OpenGLVertexBuffer {
     }
 
     fn set_data(&mut self, bytes: &[u8]) {
-        todo!("OpenGLVertexBuffer, VertexBuffer impl set_data")
+        unsafe {
+            self.bind();
+            self.gl.buffer_data_u8_slice(ARRAY_BUFFER, bytes, STATIC_DRAW);
+        }
     }
 
     fn get_layout(&self) -> &BufferLayout {
