@@ -1,26 +1,46 @@
 use std::vec;
+use std::rc::Rc;
 
 use glow::*;
 use nalgebra_glm as glm;
 
+
+
+pub trait VertexBuffer {
+    fn bind(&mut self);
+    fn unbind(&mut self);
+    fn set_data(&mut self, bytes: &[u8]);
+    fn get_layout(&self) -> &BufferLayout;
+}
+
+
+
+
 pub struct VertexArray {
     id: u32,
     vertex_buffer_index: u32,
-    vertex_buffers: Vec<VertexBuffer>,
+    vertex_buffers: Vec<OpenGLVertexBuffer>,
     index_buffer: i32, // TODO: WHAT IS THIS FOR?
 
 }
 
-pub struct VertexBuffer {
-    id: NativeBuffer,
+
+
+pub struct OpenGLVertexBuffer {
+    gl: Rc<Context>,
+    vbo: NativeBuffer,
     layout: BufferLayout
 }
 
+
+#[derive(Default)]
 pub struct BufferLayout {
     stride: u32,
     elements: Vec<BufferElement>,
 }
 
+
+#[derive(Default)]
 pub struct BufferElement {
     name: String,
     dtype: ShaderDataType,
@@ -29,7 +49,10 @@ pub struct BufferElement {
     normalized: bool,
 }
 
+
+#[derive(Default)]
 pub enum ShaderDataType {
+    #[default]
     None,
     Float,
     Float2,
@@ -44,10 +67,14 @@ pub enum ShaderDataType {
     Bool,
 }
 
+
+
 pub struct BufferLayoutBuilder {
     offset: u32,
     layout: BufferLayout,
 }
+
+
 
 impl ShaderDataType {
     fn size(&self) -> u32 {
@@ -68,6 +95,7 @@ impl ShaderDataType {
 }
 
 
+
 impl BufferElement {
     pub fn new(dtype: ShaderDataType, name: &str, normalized: bool) -> Self {
         let size = dtype.size();
@@ -82,6 +110,7 @@ impl BufferElement {
 }
 
 
+
 impl BufferLayout {
     pub fn stride(&self) -> u32 {
         self.stride
@@ -91,6 +120,7 @@ impl BufferLayout {
         &self.elements
     }
 }
+
 
 
 impl BufferLayoutBuilder {
@@ -118,31 +148,47 @@ impl BufferLayoutBuilder {
 }
 
 
-// impl VertexBuffer {
-//     pub fn new(gl: &Context, size: u32, vertices: &[f32]) -> Self {
-//         unsafe {
-//            match gl.create_buffer() {
-//                Err(e) => { panic!("FATAL: Failed to create vertex buffer.") },
-//                Ok(id) => {
-//
-//                    let bytes: &[u8] = core::slice::from_raw_parts(
-//                        vertices.as_ptr() as *const u8,
-//                        vertices.len() * core::mem::size_of::<f32>()
-//                    );
-//
-//                    gl.bind_buffer(ARRAY_BUFFER, Some(id));
-//                    gl.buffer_data_u8_slice(ARRAY_BUFFER, bytes, STATIC_DRAW);
-//
-//                    VertexBuffer {
-//                        id,
-//                        layout: BufferLayout::new(),
-//                    }
-//
-//                }
-//            }
-//         }
-//     }
-// }
+
+impl OpenGLVertexBuffer {
+    pub fn new(gl: Rc<Context>, layout: BufferLayout) -> Self {
+        unsafe {
+            let vbo = gl.create_buffer()
+                .expect("Failed to create OpenGL Buffer");
+
+            Self {
+                gl,
+                vbo,
+                layout,
+            }
+        }
+    }
+}
+
+
+
+impl VertexBuffer for OpenGLVertexBuffer {
+    fn bind(&mut self) {
+        unsafe {
+            self.gl.bind_buffer(ARRAY_BUFFER, Some(self.vbo));
+        }
+    }
+
+    fn unbind(&mut self) {
+        unsafe {
+            self.gl.bind_buffer(ARRAY_BUFFER, None);
+        }
+    }
+
+    fn set_data(&mut self, bytes: &[u8]) {
+        todo!("OpenGLVertexBuffer, VertexBuffer impl set_data")
+    }
+
+    fn get_layout(&self) -> &BufferLayout {
+        &self.layout
+    }
+}
+
+
 
 #[cfg(test)]
 mod tests {
@@ -159,3 +205,7 @@ mod tests {
         assert_eq!(2, buffer_layout.elements().len());
     }
 }
+
+
+
+
