@@ -585,7 +585,7 @@ fn clamp_position_2d(pos: glm::Vec2, x_min: f32, x_max: f32, y_min: f32, y_max: 
 
 #[derive(Debug)]
 pub struct Renderer {
-    gl: Context,
+    gl: Box<Context>,
 
     width: i32,
     height: i32,
@@ -656,7 +656,7 @@ impl Renderer {
 
             gl.use_program(None);
             Renderer {
-                gl,
+                gl: Box::new(gl),
                 width,
                 height,
                 paddle_program,
