@@ -6,11 +6,13 @@ use nalgebra_glm as glm;
 
 
 
-pub trait VertexArray<V: VertexBuffer> {
+pub trait VertexArray {
+    type Item: VertexBuffer;
+
     fn bind(&self);
     fn unbind(&self);
-    fn add_vertex_buffer(&mut self, buffer: V);
-    fn get_vertex_buffers(&self) -> &[V];
+    fn add_vertex_buffer(&mut self, buffer: &mut Self::Item);
+    fn get_vertex_buffers(&self) -> &[Self::Item];
     fn set_index_buffer(&mut self);
     fn get_index_buffer(&self); // TODO: fix return type once I figure index buffers lol
 }
@@ -18,10 +20,17 @@ pub trait VertexArray<V: VertexBuffer> {
 
 
 pub trait VertexBuffer {
-    fn bind(&mut self);
-    fn unbind(&mut self);
+    fn bind(&self);
+    fn unbind(&self);
     fn set_data(&mut self, bytes: &[u8]);
     fn get_layout(&self) -> &BufferLayout;
+}
+
+
+
+pub trait IndexBuffer {
+    fn bind(&self);
+    fn unbind(&self);
 }
 
 
@@ -44,6 +53,13 @@ pub struct GLVertexBuffer {
     layout: BufferLayout
 }
 
+
+
+pub struct GLIndexBuffer {
+    gl: Rc<glow::Context>,
+    ibo: NativeBuffer,
+    count: usize,
+}
 
 #[derive(Default)]
 pub struct BufferLayout {
@@ -257,13 +273,13 @@ impl Drop for GLVertexBuffer {
 
 
 impl VertexBuffer for GLVertexBuffer {
-    fn bind(&mut self) {
+    fn bind(&self) {
         unsafe {
             self.gl.bind_buffer(ARRAY_BUFFER, Some(self.vbo));
         }
     }
 
-    fn unbind(&mut self) {
+    fn unbind(&self) {
         unsafe {
             self.gl.bind_buffer(ARRAY_BUFFER, None);
         }
@@ -310,7 +326,9 @@ impl Drop for GLVertexArray {
 }
 
 
-impl VertexArray<GLVertexBuffer> for GLVertexArray {
+impl VertexArray for GLVertexArray {
+    type Item = GLVertexBuffer;
+
     fn bind(&self) {
         unsafe {
             self.gl.bind_vertex_array(Some(self.vao));
@@ -323,13 +341,12 @@ impl VertexArray<GLVertexBuffer> for GLVertexArray {
         }
     }
 
-    fn add_vertex_buffer(&mut self, mut buffer: GLVertexBuffer) {
+    fn add_vertex_buffer(&mut self, buffer: &mut GLVertexBuffer) {
         self.bind();
         buffer.bind();
-
         let layout = buffer.get_layout();
         assert!(layout.elements().len() > 0);
-        for element in buffer.layout.iter() {
+        for element in layout.iter() {
             match element.dtype {
                 ShaderDataType::Float | 
                     ShaderDataType::Float2 | 
@@ -388,8 +405,6 @@ impl VertexArray<GLVertexBuffer> for GLVertexArray {
                 _ => { assert!(false, "Unknown shader data type") },
             }
         }
-
-        self.vertex_buffers.push(buffer);
     }
 
     fn get_vertex_buffers(&self) -> &[GLVertexBuffer] {
@@ -404,6 +419,50 @@ impl VertexArray<GLVertexBuffer> for GLVertexArray {
         todo!("GLVertexArray index buffers.");
     }
 }
+
+
+
+impl GLIndexBuffer {
+    pub fn new(gl: Rc<glow::Context>, indices: &[u32]) -> Self {
+        unsafe {
+            let ibo = gl.create_buffer()
+                .expect("Failed to create opengl index buffer.");
+            gl.bind_buffer(ARRAY_BUFFER, Some(ibo));
+
+            let bytes: &[u8] = core::slice::from_raw_parts(
+                indices.as_ptr() as *const u8,
+                indices.len() * core::mem::size_of::<u32>(),
+            );
+            gl.buffer_data_u8_slice(ARRAY_BUFFER, bytes, STATIC_DRAW);
+
+            gl.bind_buffer(ARRAY_BUFFER, None);
+            
+            Self {
+                gl,
+                ibo,
+                count: indices.len(),
+            }
+        }
+    }
+}
+
+
+
+impl IndexBuffer for GLIndexBuffer {
+    fn bind(&self) {
+        unsafe {
+            self.gl.bind_buffer(ARRAY_BUFFER, Some(self.ibo));
+        }
+    }
+
+    fn unbind(&self) {
+        unsafe {
+            self.gl.bind_buffer(ARRAY_BUFFER, None);
+        }
+    }
+}
+
+
 
 #[cfg(test)]
 mod tests {
