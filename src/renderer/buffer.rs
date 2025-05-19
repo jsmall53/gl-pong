@@ -8,13 +8,14 @@ use nalgebra_glm as glm;
 
 pub trait VertexArray {
     type Item: VertexBuffer;
+    type Item2: IndexBuffer;
 
     fn bind(&self);
     fn unbind(&self);
     fn add_vertex_buffer(&mut self, buffer: &mut Self::Item);
     fn get_vertex_buffers(&self) -> &[Self::Item];
-    fn set_index_buffer(&mut self);
-    fn get_index_buffer(&self); // TODO: fix return type once I figure index buffers lol
+    fn set_index_buffer(&mut self, buffer: Self::Item2);
+    fn get_index_buffer(&self) -> &Option<Self::Item2>; 
 }
 
 
@@ -31,6 +32,7 @@ pub trait VertexBuffer {
 pub trait IndexBuffer {
     fn bind(&self);
     fn unbind(&self);
+    fn get_count(&self) -> usize;
 }
 
 
@@ -40,9 +42,8 @@ pub struct GLVertexArray {
     gl: Rc<Context>,
     vao: NativeVertexArray,
     vertex_buffer_index: u32,
-    vertex_buffers: Vec<GLVertexBuffer>,
-    // index_buffer: i32, // TODO: WHAT IS THIS FOR?
-
+    vertex_buffers: Vec<GLVertexBuffer>, // UNUSED
+    index_buffer: Option<GLIndexBuffer>,
 }
 
 
@@ -310,6 +311,7 @@ impl GLVertexArray {
                 vao,
                 vertex_buffers: Vec::new(),
                 vertex_buffer_index: 0,
+                index_buffer: None,
             }
         }
     }
@@ -328,6 +330,7 @@ impl Drop for GLVertexArray {
 
 impl VertexArray for GLVertexArray {
     type Item = GLVertexBuffer;
+    type Item2 = GLIndexBuffer;
 
     fn bind(&self) {
         unsafe {
@@ -411,12 +414,12 @@ impl VertexArray for GLVertexArray {
         &self.vertex_buffers
     }
 
-    fn set_index_buffer(&mut self) {
-        todo!("GLVertexArray index buffers.");
+    fn set_index_buffer(&mut self, buffer: GLIndexBuffer) {
+        self.index_buffer = Some(buffer);
     }
 
-    fn get_index_buffer(&self) {
-        todo!("GLVertexArray index buffers.");
+    fn get_index_buffer(&self) -> &Option<GLIndexBuffer> {
+        &self.index_buffer
     }
 }
 
@@ -458,6 +461,20 @@ impl IndexBuffer for GLIndexBuffer {
     fn unbind(&self) {
         unsafe {
             self.gl.bind_buffer(ARRAY_BUFFER, None);
+        }
+    }
+
+    fn get_count(&self) -> usize {
+        self.count
+    }
+}
+
+
+
+impl Drop for GLIndexBuffer {
+    fn drop(&mut self) {
+        unsafe {
+            self.gl.delete_buffer(self.ibo);
         }
     }
 }

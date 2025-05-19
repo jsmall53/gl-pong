@@ -61,7 +61,7 @@ impl QuadVertex {
 struct Renderer2DData {
     gl: Rc<glow::Context>,
     
-    quad_vertex_array: Box<dyn VertexArray<Item = GLVertexBuffer>>,
+    quad_vertex_array: Box<dyn VertexArray<Item = GLVertexBuffer, Item2 = GLIndexBuffer>>,
     quad_vertex_buffer: Box<dyn VertexBuffer>,
     // quad_shader: i32, // TODO: shader implementations.
 
