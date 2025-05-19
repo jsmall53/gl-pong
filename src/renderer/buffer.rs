@@ -28,10 +28,11 @@ pub trait VertexBuffer {
 
 
 pub struct GLVertexArray {
-    id: u32,
+    gl: Rc<Context>,
+    vao: NativeVertexArray,
     vertex_buffer_index: u32,
     vertex_buffers: Vec<GLVertexBuffer>,
-    index_buffer: i32, // TODO: WHAT IS THIS FOR?
+    // index_buffer: i32, // TODO: WHAT IS THIS FOR?
 
 }
 
@@ -48,6 +49,11 @@ pub struct GLVertexBuffer {
 pub struct BufferLayout {
     stride: u32,
     elements: Vec<BufferElement>,
+}
+
+struct BufferLayoutIterator<'a> {
+    index: usize,
+    layout: &'a BufferLayout,
 }
 
 
@@ -103,6 +109,26 @@ impl ShaderDataType {
             _ => 0,
         }
     }
+
+    fn gl_base_type(&self) -> u32 {
+        match &self {
+            Self::Float |
+                Self::Float2 | 
+                Self::Float3 | 
+                Self::Float4 |
+                Self::Mat3 |
+                Self::Mat4 => { FLOAT },
+            Self::Int |
+                Self::Int2 | 
+                Self::Int3 | 
+                Self::Int4 => { INT },
+            Self::Bool => { BOOL },
+            _ => { 
+                assert!(false, "Unknown shader data type");
+                0
+            }
+        }
+    }
 }
 
 
@@ -118,17 +144,44 @@ impl BufferElement {
             normalized,
         }
     }
+
+    fn get_component_count(&self) -> i32 {
+        match self.dtype {
+            ShaderDataType::Float | 
+                ShaderDataType::Int => { 1 },
+            ShaderDataType::Float2 | 
+                ShaderDataType::Int2 => { 2 },
+            ShaderDataType::Float3 | 
+                ShaderDataType::Int3 => { 3 },
+            ShaderDataType::Float4 | 
+                ShaderDataType::Int4 => { 4 },
+            ShaderDataType::Mat3 => { 3 },
+            ShaderDataType::Mat4 => { 4 },
+            ShaderDataType::Bool => { 1 },
+            _ => { 
+                assert!(false, "Unknown shader data type"); 
+                0
+            }
+        }
+    }
 }
 
 
 
 impl BufferLayout {
-    pub fn stride(&self) -> u32 {
-        self.stride
+    pub fn stride(&self) -> i32 {
+        self.stride as i32
     }
 
     pub fn elements(&self) -> &[BufferElement] {
         &self.elements
+    }
+
+    pub fn iter(&self) -> BufferLayoutIterator {
+        BufferLayoutIterator {
+            layout: &self,
+            index: 0
+        }
     }
 }
 
@@ -160,6 +213,22 @@ impl BufferLayoutBuilder {
 
 
 
+impl<'a> Iterator for BufferLayoutIterator<'a> {
+    type Item = &'a BufferElement;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index < self.layout.elements.len() {
+            let result = Some(&self.layout.elements[self.index]);
+            self.index += 1;
+            result
+        } else {
+            None
+        }
+    }
+}
+
+
+
 impl GLVertexBuffer {
     pub fn new(gl: Rc<Context>, layout: BufferLayout) -> Self {
         unsafe {
@@ -171,6 +240,16 @@ impl GLVertexBuffer {
                 vbo,
                 layout,
             }
+        }
+    }
+}
+
+
+
+impl Drop for GLVertexBuffer {
+    fn drop(&mut self) {
+        unsafe {
+            self.gl.delete_buffer(self.vbo);
         }
     }
 }
@@ -203,6 +282,128 @@ impl VertexBuffer for GLVertexBuffer {
 }
 
 
+
+impl GLVertexArray {
+    pub fn new(gl: Rc<Context>) -> Self {
+        unsafe {
+            let vao = gl.create_vertex_array()
+                .expect("Failed to create OpenGL vertex array");
+
+            Self {
+                gl,
+                vao,
+                vertex_buffers: Vec::new(),
+                vertex_buffer_index: 0,
+            }
+        }
+    }
+}
+
+
+
+impl Drop for GLVertexArray {
+    fn drop(&mut self) {
+        unsafe {
+            self.gl.delete_vertex_array(self.vao);
+        }
+    }
+}
+
+
+impl VertexArray<GLVertexBuffer> for GLVertexArray {
+    fn bind(&self) {
+        unsafe {
+            self.gl.bind_vertex_array(Some(self.vao));
+        }
+    }
+
+    fn unbind(&self) {
+        unsafe {
+            self.gl.bind_vertex_array(None);
+        }
+    }
+
+    fn add_vertex_buffer(&mut self, mut buffer: GLVertexBuffer) {
+        self.bind();
+        buffer.bind();
+
+        let layout = buffer.get_layout();
+        assert!(layout.elements().len() > 0);
+        for element in buffer.layout.iter() {
+            match element.dtype {
+                ShaderDataType::Float | 
+                    ShaderDataType::Float2 | 
+                    ShaderDataType::Float3 |
+                    ShaderDataType::Float4 => {
+                        unsafe {
+                            self.gl.enable_vertex_attrib_array(self.vertex_buffer_index);
+                            self.gl.vertex_attrib_pointer_f32(
+                                self.vertex_buffer_index,
+                                element.get_component_count(),
+                                element.dtype.gl_base_type(),
+                                element.normalized, 
+                                layout.stride as i32,
+                                element.offset as i32);
+                            self.vertex_buffer_index += 1;
+                        }
+                    },
+
+                ShaderDataType::Int |
+                    ShaderDataType::Int2 | 
+                    ShaderDataType::Int3 | 
+                    ShaderDataType::Int4 | 
+                    ShaderDataType::Bool => {
+                        unsafe {
+                            self.gl.enable_vertex_attrib_array(self.vertex_buffer_index);
+                            self.gl.vertex_attrib_pointer_i32(
+                                self.vertex_buffer_index,
+                                element.get_component_count(),
+                                element.dtype.gl_base_type(), 
+                                layout.stride as i32,
+                                element.offset as i32);
+                            self.vertex_buffer_index += 1;
+                        }
+                    },
+
+                ShaderDataType::Mat3 |
+                    ShaderDataType::Mat4 => {
+                        let count = element.get_component_count();
+                        for i in 0..count {
+                            unsafe {
+                                self.gl.enable_vertex_attrib_array(self.vertex_buffer_index);
+                                self.gl.vertex_attrib_pointer_f32(
+                                    self.vertex_buffer_index,
+                                    count,
+                                    element.dtype.gl_base_type(),
+                                    element.normalized, 
+                                    layout.stride as i32,
+                                    element.offset as i32 + (std::mem::size_of::<f32>() as i32 * i * count)
+                                ); 
+                                self.gl.vertex_attrib_divisor(self.vertex_buffer_index, 1);
+                                self.vertex_buffer_index += 1;
+                            }
+                        }
+                    },
+
+                _ => { assert!(false, "Unknown shader data type") },
+            }
+        }
+
+        self.vertex_buffers.push(buffer);
+    }
+
+    fn get_vertex_buffers(&self) -> &[GLVertexBuffer] {
+        &self.vertex_buffers
+    }
+
+    fn set_index_buffer(&mut self) {
+        todo!("GLVertexArray index buffers.");
+    }
+
+    fn get_index_buffer(&self) {
+        todo!("GLVertexArray index buffers.");
+    }
+}
 
 #[cfg(test)]
 mod tests {
