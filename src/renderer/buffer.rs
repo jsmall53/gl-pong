@@ -62,6 +62,15 @@ pub struct GLIndexBuffer {
     count: usize,
 }
 
+
+
+pub struct GLUniformBuffer {
+    gl: Rc<glow::Context>,
+    buffer: NativeBuffer,
+}
+
+
+
 #[derive(Default)]
 pub struct BufferLayout {
     stride: u32,
@@ -479,6 +488,38 @@ impl Drop for GLIndexBuffer {
     }
 }
 
+
+
+impl GLUniformBuffer {
+    pub fn new(gl: Rc<glow::Context>, size: i32, binding: u32) -> Self {
+        unsafe {
+            let buffer = gl.create_buffer()
+                .expect("Failed to create opengl buffer");
+            gl.named_buffer_data_size(buffer, size, DYNAMIC_DRAW);
+            gl.bind_buffer_base(UNIFORM_BUFFER, binding, Some(buffer));
+            Self {
+                gl,
+                buffer,
+            }
+        }
+    }
+
+    pub fn set_data(&mut self, bytes: &[u8], offset: usize) {
+        unsafe {
+            self.gl.named_buffer_sub_data_u8_slice(self.buffer, offset as i32, bytes);
+        }
+    }
+}
+
+
+
+impl Drop for GLUniformBuffer {
+    fn drop(&mut self) {
+        unsafe {
+            self.gl.delete_buffer(self.buffer);
+        }
+    }
+}
 
 
 #[cfg(test)]

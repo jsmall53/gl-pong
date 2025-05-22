@@ -46,6 +46,13 @@ impl QuadVertex {
 }
 
 
+#[derive(Debug)]
+#[repr(C)]
+struct CameraData {
+    view_projection: glm::Mat4,
+}
+
+
 
 const MAX_QUADS: usize = 20000;
 const MAX_VERTICES: usize = MAX_QUADS * 4;
@@ -77,6 +84,9 @@ struct Renderer2DData {
     quad_vertex_buffer_idx: usize, // index position of current quad_vertex_buffer_base
 
     quad_vertex_positions: [glm::Vec4; 4], 
+
+    camera_uniform_buffer: Box<GLUniformBuffer>,
+    camera_data: CameraData,
 }
 
 
@@ -167,8 +177,15 @@ impl Renderer2D {
     }
 
     pub fn begin_scene(&mut self) {
-        // TODO: setup camera?
-        //
+        self.data.camera_data.view_projection = glm::Mat4::identity();
+        let bytes: &[u8] = unsafe { std::slice::from_raw_parts(
+            &self.data.camera_data as *const _ as *const u8,
+            std::mem::size_of::<CameraData>(),
+        ) };
+        self.data.camera_uniform_buffer.set_data(
+            &bytes, std::mem::size_of::<CameraData>());
+
+
         self.start_batch();
     }
 
