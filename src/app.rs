@@ -1,6 +1,9 @@
 #[path = "./game.rs"]
 pub mod game;
 
+#[path = "./example.rs"]
+pub mod example;
+
 use std::{error::Error, num::NonZeroU32};
 use glutin::api::glx;
 use glutin_winit::{DisplayBuilder, GlWindow};
@@ -16,6 +19,7 @@ use glutin::surface::{WindowSurface, SwapInterval, Surface};
 use glutin::config::{Config, ConfigTemplateBuilder};
 
 use game::Game;
+use example::Example2D;
 
 
 const WINDOW_TITLE: &str = "gl-pong";
@@ -23,6 +27,7 @@ const WINDOW_TITLE: &str = "gl-pong";
 pub struct App {
     template: ConfigTemplateBuilder,
     game: Option<Game>, // TODO; implement renderer as type Renderer...
+    example_2D: Option<Example2D>,
     app_state: Option<AppState>, //TODO: implement AppState type
     gl_context: Option<PossiblyCurrentContext>,
     gl_display: GlDisplayCreationState,
@@ -40,6 +45,7 @@ impl App {
             gl_display: GlDisplayCreationState::Builder(display_builder),
             app_state: None,
             game: None,
+            example_2D: None,
             gl_context: None,
             exit_state: Ok(())
         }
@@ -106,9 +112,18 @@ impl ApplicationHandler for App {
         let gl_context = self.gl_context.as_ref().unwrap();
         gl_context.make_current(&gl_surface);
 
-        self.game.get_or_insert_with(|| {
+        // self.game.get_or_insert_with(|| {
+        //     let size = window.inner_size();
+        //     Game::new(&gl_config.display(), size.width as i32, size.height as i32)
+        // });
+        println!("Checking new example");
+        self.example_2D.get_or_insert_with(|| {
+            println!("example_2D get or insert with");
             let size = window.inner_size();
-            Game::new(&gl_config.display(), size.width as i32, size.height as i32)
+            println!("window size");
+            let display = gl_config.display();
+            println!("gl config display");
+            Example2D::new(&display, size.width as i32, size.height as i32)
         });
 
         if let Err(res) = gl_surface.set_swap_interval(gl_context, SwapInterval::Wait(NonZeroU32::new(1).unwrap())) {
@@ -125,6 +140,7 @@ impl ApplicationHandler for App {
         window_id: winit::window::WindowId,
         event: winit::event::WindowEvent,
     ) {
+        // println!("{:?}, {:?}", window_id, event);
         match event {
             WindowEvent::Resized(size) if size.width != 0 && size.height != 0 => {
                 if let Some(AppState { gl_surface, window: _}) = self.app_state.as_ref() {
@@ -134,8 +150,11 @@ impl ApplicationHandler for App {
                         NonZeroU32::new(size.width).unwrap(),
                         NonZeroU32::new(size.height).unwrap(),
                     );
-                    let game = self.game.as_mut().unwrap();
-                    game.resize(size.width as i32, size.height as i32);
+                    // let game = self.game.as_mut().unwrap();
+                    // game.resize(size.width as i32, size.height as i32);
+
+                    let example = self.example_2D.as_mut().unwrap();
+                    example.resize(size.width as i32, size.height as i32);
                 }
             },
             WindowEvent::CloseRequested => event_loop.exit(),
@@ -144,14 +163,14 @@ impl ApplicationHandler for App {
                 match key {
                     Key::Named(NamedKey::Escape)  => event_loop.exit(),
                     _ => {
-                        let game = self.game.as_mut().unwrap();
-                        game.handle_keyboard(event); 
+                        // let game = self.game.as_mut().unwrap();
+                        // game.handle_keyboard(event); 
                     }
                 }
             },
             WindowEvent::CursorMoved { device_id, position } => {
-                let game = self.game.as_mut().unwrap();
-                game.update_cursor(position.x, position.y);
+                // let game = self.game.as_mut().unwrap();
+                // game.update_cursor(position.x, position.y);
             },
             _ => { },
         } 
@@ -160,10 +179,11 @@ impl ApplicationHandler for App {
     fn about_to_wait(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         if let Some(AppState {gl_surface, window}) = self.app_state.as_ref() {
             let gl_context = self.gl_context.as_ref().unwrap();
-            // let renderer = self.renderer.as_ref().unwrap();
             window.request_redraw();
-            let mut game = self.game.as_mut().unwrap();
-            game.update();
+            // let mut game = self.game.as_mut().unwrap();
+            // game.update();
+            let mut example = self.example_2D.as_mut().unwrap();
+            example.update();
             gl_surface.swap_buffers(gl_context).unwrap();
         }
     }

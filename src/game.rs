@@ -1,11 +1,6 @@
-pub mod renderer;
-use renderer::*;
-
-pub mod physics;
-use physics::*;
-
-pub mod input;
-use input::{InputController, InputState, PongKey, KeyMap};
+use crate::renderer::*;
+use crate::physics::*;
+use crate::input::{InputController, InputState, PongKey, KeyMap};
 
 use std::collections::HashMap;
 use std::time::{Instant, Duration};

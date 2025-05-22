@@ -1,5 +1,13 @@
 pub mod app;
+pub mod renderer;
+pub mod game;
+pub mod physics;
+pub mod input;
+
 use crate::app::App;
+
+
+
 use std::error::Error;
 use winit::{application::ApplicationHandler, event_loop::EventLoop, window::WindowAttributes};
 

@@ -289,7 +289,7 @@ impl VertexBuffer for GLVertexBuffer {
     fn set_data(&mut self, bytes: &[u8]) {
         unsafe {
             self.bind();
-            self.gl.buffer_data_u8_slice(ARRAY_BUFFER, bytes, STATIC_DRAW);
+            self.gl.buffer_sub_data_u8_slice(ARRAY_BUFFER, 0, bytes);
         }
     }
 
