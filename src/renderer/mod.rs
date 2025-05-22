@@ -101,6 +101,9 @@ impl Renderer2D {
         let quad_layout = BufferLayoutBuilder::new()
             .element(BufferElement::new(ShaderDataType::Float3, "a_Position", false))
             .element(BufferElement::new(ShaderDataType::Float4, "a_Color", false))
+            .element(BufferElement::new(ShaderDataType::Float4, "a_TexCoord", false))
+            .element(BufferElement::new(ShaderDataType::Float4, "a_TexIndex", false))
+            .element(BufferElement::new(ShaderDataType::Float4, "a_TilingFactor", false))
             .element(BufferElement::new(ShaderDataType::Int, "a_EntityId", false))
             .build();
 
@@ -138,6 +141,8 @@ impl Renderer2D {
             glm::Vec4::new(0.5, 0.5, 0.0, 1.0),
             glm::Vec4::new(-0.5, 0.5, 0.0, 1.0),
         ];
+
+        let quad_shader = GLShader::new(gl_rc.clone(), "quad_shader", VERTEX_SRC, FRAGMENT_SRC);
 
         let data = Box::new(Renderer2DData {
             gl: gl_rc.clone(),
