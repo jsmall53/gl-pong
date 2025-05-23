@@ -25,8 +25,7 @@ pub struct OrthographicCameraController {
 impl OrthographicCamera {
     pub fn new(left: f32, right: f32, top: f32, bottom: f32) -> Self {
         let projection = glm::ortho(left, right, top, bottom, -1.0f32, 1.0f32);
-        let mut view = glm::Mat4::zeros();
-        view.fill(1.0f32);
+        let mut view = glm::Mat4::identity();
         let view_projection = glm::Mat4::identity();
         Self {
             position: glm::Vec3::zeros(),
@@ -43,12 +42,12 @@ impl OrthographicCamera {
     }
 
     pub fn recalculate_view(&mut self) {
-        let ones = mat4_ones();
+        let identity = glm::Mat4::identity();
 
         // translation * rotation
-        let transform: glm::Mat4 = glm::translate(&ones, &self.position) *
+        let transform: glm::Mat4 = glm::translate(&identity, &self.position) *
             glm::rotate(
-                &ones, 
+                &identity, 
                 self.rotation.to_radians(),
                 &glm::Vec3::new(0.0f32, 0.0f32, 1.0f32)
             );
@@ -102,9 +101,3 @@ impl OrthographicCameraController {
 }
 
 
-
-fn mat4_ones() -> glm::Mat4 {
-    let mut ones = glm::Mat4::zeros();
-    ones.fill(1.0f32);
-    ones
-}

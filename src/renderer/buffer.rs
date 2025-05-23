@@ -69,6 +69,7 @@ pub struct GLIndexBuffer {
 pub struct GLUniformBuffer {
     gl: Rc<glow::Context>,
     buffer: NativeBuffer,
+    binding: u32,
 }
 
 
@@ -258,14 +259,17 @@ impl<'a> Iterator for BufferLayoutIterator<'a> {
 
 
 impl GLVertexBuffer {
-    pub fn new(gl: Rc<Context>, layout: BufferLayout) -> Self {
-        let vbo = unsafe { gl.create_buffer()
-            .expect("Failed to create OpenGL Buffer") };
-
-        Self {
-            gl,
-            vbo,
-            layout,
+    pub fn new(gl: Rc<Context>, layout: BufferLayout, size: i32) -> Self {
+        unsafe {
+            let vbo =  gl.create_buffer()
+                .expect("Failed to create OpenGL Buffer");
+            gl.bind_buffer(ARRAY_BUFFER, Some(vbo));
+            gl.buffer_data_size(ARRAY_BUFFER, size, glow::DYNAMIC_DRAW);
+            Self {
+                gl,
+                vbo,
+                layout,
+            }
         }
     }
 }
@@ -284,20 +288,22 @@ impl Drop for GLVertexBuffer {
 
 impl VertexBuffer for GLVertexBuffer {
     fn bind(&self) {
+        println!("Bind vertex buffer");
         unsafe {
             self.gl.bind_buffer(ARRAY_BUFFER, Some(self.vbo));
         }
     }
 
     fn unbind(&self) {
+        println!("Unbind vertex buffer.");
         unsafe {
             self.gl.bind_buffer(ARRAY_BUFFER, None);
         }
     }
 
     fn set_data(&mut self, bytes: &[u8]) {
+        self.bind();
         unsafe {
-            self.bind();
             self.gl.buffer_sub_data_u8_slice(ARRAY_BUFFER, 0, bytes);
         }
     }
@@ -340,20 +346,22 @@ impl VertexArray for GLVertexArray {
     type Item2 = GLIndexBuffer;
 
     fn bind(&self) {
+        println!("Bind vertex array.");
         unsafe {
             self.gl.bind_vertex_array(Some(self.vao));
         }
     }
 
     fn unbind(&self) {
+        println!("Unbind vertex array.");
         unsafe {
             self.gl.bind_vertex_array(None);
         }
     }
 
     fn add_vertex_buffer(&mut self, buffer: &mut GLVertexBuffer) {
-        self.bind();
         buffer.bind();
+        self.bind();
         let layout = buffer.get_layout();
         assert!(layout.elements().len() > 0);
         for element in layout.iter() {
@@ -415,6 +423,8 @@ impl VertexArray for GLVertexArray {
                 _ => { assert!(false, "Unknown shader data type") },
             }
         }
+        self.unbind();
+        buffer.unbind();
     }
 
     fn get_vertex_buffers(&self) -> &[GLVertexBuffer] {
@@ -440,16 +450,14 @@ impl GLIndexBuffer {
         unsafe {
             let ibo = gl.create_buffer()
                 .expect("Failed to create opengl index buffer.");
-            gl.bind_buffer(ARRAY_BUFFER, Some(ibo));
+            gl.bind_buffer(ELEMENT_ARRAY_BUFFER, Some(ibo));
 
             let bytes: &[u8] = core::slice::from_raw_parts(
                 indices.as_ptr() as *const u8,
                 indices.len() * core::mem::size_of::<u32>(),
             );
-            gl.buffer_data_u8_slice(ARRAY_BUFFER, bytes, STATIC_DRAW);
-
-            gl.bind_buffer(ARRAY_BUFFER, None);
-            
+            gl.buffer_data_u8_slice(ELEMENT_ARRAY_BUFFER, bytes, STATIC_DRAW);
+            // leave ibo bound 
             Self {
                 gl,
                 ibo,
@@ -463,14 +471,17 @@ impl GLIndexBuffer {
 
 impl IndexBuffer for GLIndexBuffer {
     fn bind(&self) {
+        println!("Bind index buffer");
         unsafe {
-            self.gl.bind_buffer(ARRAY_BUFFER, Some(self.ibo));
+            self.gl.bind_buffer(ELEMENT_ARRAY_BUFFER, Some(self.ibo));
         }
     }
 
     fn unbind(&self) {
+        println!("Unbind index buffer");
+        panic!("Unbinding index buffer");
         unsafe {
-            self.gl.bind_buffer(ARRAY_BUFFER, None);
+            self.gl.bind_buffer(ELEMENT_ARRAY_BUFFER, None);
         }
     }
 
@@ -492,22 +503,40 @@ impl Drop for GLIndexBuffer {
 
 
 impl GLUniformBuffer {
-    pub fn new(gl: Rc<glow::Context>, size: i32, binding: u32) -> Self {
+    pub fn new(gl: Rc<glow::Context>, size: usize, binding: u32) -> Self {
         unsafe {
             let buffer = gl.create_buffer()
                 .expect("Failed to create opengl buffer");
-            gl.named_buffer_data_size(buffer, size, DYNAMIC_DRAW);
             gl.bind_buffer_base(UNIFORM_BUFFER, binding, Some(buffer));
+            gl.named_buffer_data_size(buffer, size as i32, DYNAMIC_DRAW);
             Self {
                 gl,
                 buffer,
+                binding,
             }
         }
     }
 
     pub fn set_data(&mut self, bytes: &[u8], offset: usize) {
+        self.bind();
         unsafe {
+            let buffer_size = self.gl.get_buffer_parameter_i32(UNIFORM_BUFFER, BUFFER_SIZE);
+            println!("GL_BUFFER_SIZE: {}, data size: {}, offset: {} ({})",
+                buffer_size, bytes.len(), offset, bytes.len() + offset);
+
             self.gl.named_buffer_sub_data_u8_slice(self.buffer, offset as i32, bytes);
+        }
+    }
+
+    pub fn bind(&self) {
+        unsafe {
+            self.gl.bind_buffer_base(UNIFORM_BUFFER, self.binding, Some(self.buffer));
+        }
+    }
+
+    pub fn unbind(&self) {
+        unsafe {
+            self.gl.bind_buffer_base(UNIFORM_BUFFER, self.binding, None);
         }
     }
 }

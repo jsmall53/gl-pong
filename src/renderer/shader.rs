@@ -18,15 +18,12 @@ impl GLShader {
         sources.insert(glow::VERTEX_SHADER, vertex_src.into());
         sources.insert(glow::FRAGMENT_SHADER, fragment_src.into());
 
-        unsafe {
-            let program = init_program(&gl, vertex_src, fragment_src);
-            Self {
-                gl,
-                name: name.into(),
-                sources,
-                program,
-            }
-
+        let program = unsafe { init_program(&gl, vertex_src, fragment_src) };
+        Self {
+            gl,
+            name: name.into(),
+            sources,
+            program,
         }
     }
 

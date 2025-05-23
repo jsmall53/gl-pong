@@ -1,3 +1,4 @@
+// pub mod renderer;
 use crate::renderer::*;
 use crate::physics::*;
 use crate::input::{InputController, InputState, PongKey, KeyMap};
@@ -820,12 +821,11 @@ unsafe fn create_paddle_buffer(gl: &Context, pos_loc: u32, col_loc: u32, vertice
 
     let vbo = gl.create_buffer()
         .expect("Failed to create vertex buffer object");
-
-    gl.bind_buffer(ARRAY_BUFFER, Some(vbo));
-    gl.buffer_data_u8_slice(ARRAY_BUFFER, bytes, STATIC_DRAW);
-
     let vao = gl.create_vertex_array()
         .expect("Failed to create vertex array object");
+
+    gl.bind_buffer(ARRAY_BUFFER, Some(vbo));
+
 
     gl.bind_vertex_array(Some(vao));
 
@@ -850,6 +850,7 @@ unsafe fn create_paddle_buffer(gl: &Context, pos_loc: u32, col_loc: u32, vertice
 
     ); 
 
+    gl.buffer_data_u8_slice(ARRAY_BUFFER, bytes, STATIC_DRAW);
     gl.bind_vertex_array(None);
     gl.bind_buffer(ARRAY_BUFFER, None);
     (vbo, vao)

@@ -25,14 +25,15 @@ pub enum RendererBackend {
 
 
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
+#[repr(C)]
 struct QuadVertex {
     position: glm::Vec3,
     color: glm::Vec4,
     tex_coord: glm::Vec2,
     tex_index: f32,
     tiling_factor: f32,
-    entity_id: i64,
+    entity_id: i32,
 }
 
 
@@ -55,6 +56,17 @@ impl QuadVertex {
 #[repr(C)]
 struct CameraData {
     view_projection: glm::Mat4,
+}
+
+impl CameraData {
+    fn as_bytes(&self) -> &[u8] {
+        unsafe {
+            std::slice::from_raw_parts(
+                self as *const CameraData as *const u8,
+                std::mem::size_of::<CameraData>(),
+            )
+        }
+    }
 }
 
 
@@ -124,14 +136,18 @@ impl Renderer2D {
         let quad_layout = BufferLayoutBuilder::new()
             .element(BufferElement::new(ShaderDataType::Float3, "a_Position", false))
             .element(BufferElement::new(ShaderDataType::Float4, "a_Color", false))
-            .element(BufferElement::new(ShaderDataType::Float4, "a_TexCoord", false))
-            .element(BufferElement::new(ShaderDataType::Float4, "a_TexIndex", false))
-            .element(BufferElement::new(ShaderDataType::Float4, "a_TilingFactor", false))
+            .element(BufferElement::new(ShaderDataType::Float2, "a_TexCoord", false))
+            .element(BufferElement::new(ShaderDataType::Float, "a_TexIndex", false))
+            .element(BufferElement::new(ShaderDataType::Float, "a_TilingFactor", false))
             .element(BufferElement::new(ShaderDataType::Int, "a_EntityId", false))
             .build();
-
+        println!("{:?}", quad_layout);
         let gl_rc = Rc::new(gl);
-        let mut quad_buffer = GLVertexBuffer::new(gl_rc.clone(), quad_layout);
+        let mut quad_buffer = GLVertexBuffer::new(
+            gl_rc.clone(), 
+            quad_layout,
+            (std::mem::size_of::<QuadVertex>() * MAX_VERTICES) as i32,
+        );
         let mut quad_vertex_array = GLVertexArray::new(gl_rc.clone());
         quad_vertex_array.add_vertex_buffer(&mut quad_buffer);
 
@@ -167,7 +183,10 @@ impl Renderer2D {
 
         let quad_shader = GLShader::new(gl_rc.clone(), "quad_shader", VERTEX_SRC, FRAGMENT_SRC);
 
-        let camera_uniform_buffer = GLUniformBuffer::new(gl_rc.clone(),0, 0);
+        let camera_uniform_buffer = GLUniformBuffer::new(
+            gl_rc.clone(), 
+            std::mem::size_of::<CameraData>(), 
+            0);
 
         let data = Box::new(Renderer2DData {
             gl: gl_rc.clone(),
@@ -230,20 +249,16 @@ impl Renderer2D {
 
     fn flush(&mut self) {
         if self.data.quad_index_count > 0 {
-            let bytes: &[u8] = unsafe { core::slice::from_raw_parts(
-                self.data.quad_vertex_buffer_base[0..self.data.quad_vertex_buffer_idx].as_ptr() as *const u8,
-                self.data.quad_vertex_buffer_idx * core::mem::size_of::<QuadVertex>()
-            ) };
-            println!("quad vertex bytes: {}", bytes.len());
+            let bytes: &[u8] = to_bytes(
+                &self.data.quad_vertex_buffer_base[0..self.data.quad_vertex_buffer_idx]
+            );
             self.data.quad_vertex_buffer.set_data(bytes);
 
             // TODO: bind textures here
             
             self.data.quad_shader.bind();
 
-            println!("draw indexed");
             self.draw_indexed();
-            println!("done.");
             self.stats.increment_draw_calls();
         }
 
@@ -253,37 +268,33 @@ impl Renderer2D {
     }
 
     pub fn draw_quad_ez(&mut self, position: &glm::Vec3, size: &glm::Vec2, color: glm::Vec4) {
-        let mut ones = glm::Mat4::zeros();
-        ones.fill(1.0f32);
-        let translate = glm::translate(&ones, position);
-        let scale = glm::scale(&ones, &glm::vec2_to_vec3(size));
+        let mut identity = glm::Mat4::identity();
+        let translate = glm::translate(&identity, position);
+        let scale = glm::scale(&identity, &glm::vec2_to_vec3(size));
         let transform = translate * scale;
         self.draw_quad(&transform, color, -1);
     }
 
-    pub fn draw_quad(&mut self, transform: &glm::Mat4, color: glm::Vec4, entity_id: i64) {
+    pub fn draw_quad(&mut self, transform: &glm::Mat4, color: glm::Vec4, entity_id: i32) {
         if self.data.quad_index_count >= MAX_INDICES as u32 {
             self.next_batch();
         }
-
 
         for i in (0..QUAD_VERTEX_COUNT) {
             let vertex: &mut QuadVertex = &mut self.data.quad_vertex_buffer_base[
                 self.data.quad_vertex_buffer_idx
             ];
-            
+            let position = &(transform * &self.data.quad_vertex_positions[i]);
             vertex.position = glm::vec4_to_vec3(
-                &(transform * &self.data.quad_vertex_positions[i])
+                position
             );
             vertex.color = color;
             vertex.tex_index = 0.0;
             vertex.tex_coord = TEXTURE_COORDS[i];
             vertex.tiling_factor = 1.0;
             vertex.entity_id = entity_id;
-
             self.data.quad_vertex_buffer_idx += 1;
         }
-
         self.data.quad_index_count += 6;
         self.stats.increment_quad_count();
     }
@@ -300,7 +311,7 @@ impl Renderer2D {
     fn clear_color(&self) {
         match &self.backend {
             RendererBackend::OpenGL(ogl) => {
-                ogl.set_clear_color(&glm::Vec4::new(0.2, 0.5, 0.2, 1.0));
+                ogl.set_clear_color(&glm::Vec4::new(0.2, 0.3, 0.5, 1.0));
             },
             _ => { },
         }
@@ -309,13 +320,32 @@ impl Renderer2D {
     fn set_camera_data(&mut self, camera: &OrthographicCamera) {
         // TODO: get rid of this clone.
         self.data.camera_data.view_projection = camera.get_view_projection().clone();
-        let bytes: &[u8] = unsafe { std::slice::from_raw_parts(
-            &self.data.camera_data as *const _ as *const u8,
-            std::mem::size_of::<CameraData>(),
-        ) };
+        let bytes = self.data.camera_data.as_bytes();
         self.data.camera_uniform_buffer.set_data(
             &bytes,
-            std::mem::size_of::<CameraData>());
+            0);
+        // self.data.camera_uniform_buffer.unbind();
+    }
+
+    pub fn get_error(&self) -> u32 {
+        match &self.backend {
+            RendererBackend::OpenGL(ogl) => {
+                ogl.get_error()
+            },
+            _ => { 0 }
+        }
+    }
+
+}
+
+fn to_bytes(quad_vertices: &[QuadVertex]) -> &[u8] {
+
+    println!("quad vertices size: {}", std::mem::size_of::<QuadVertex>() * quad_vertices.len());
+    unsafe {
+        std::slice::from_raw_parts(
+            quad_vertices.as_ptr() as *const u8,
+            std::mem::size_of::<QuadVertex>() * quad_vertices.len(),
+        )
     }
 }
 

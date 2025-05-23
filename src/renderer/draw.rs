@@ -26,18 +26,16 @@ impl OpenGLRendererAPI {
     }
 
     pub fn draw_indexed(&self, vertex_array: &GLVertexArray, index_count: usize) {
-        println!("OpenGLRendererAPI::draw_indexed ({})", index_count);
-        println!("{:?}", vertex_array);
         vertex_array.bind();
         let count = index_count;
-        println!("done ({})", count);
-
-        println!("draw_elements");
         unsafe {
             self.0.draw_elements(glow::TRIANGLES, count as i32, glow::UNSIGNED_INT, 0);
         }
-        println!("done");
     } 
+
+    pub fn get_error(&self) -> u32 {
+        unsafe { self.0.get_error() }
+    }
 }
 
 
@@ -50,6 +48,7 @@ impl RendererApi for OpenGLRendererAPI {
 
     fn set_clear_color(&self, color: &glm::Vec4) {
         unsafe {
+            self.0.clear(glow::COLOR_BUFFER_BIT);
             self.0.clear_color(color[0], color[1], color[2], color[3]);
         }
     }
