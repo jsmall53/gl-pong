@@ -26,16 +26,17 @@ impl OpenGLRendererAPI {
     }
 
     pub fn draw_indexed(&self, vertex_array: &GLVertexArray, index_count: usize) {
+        println!("OpenGLRendererAPI::draw_indexed ({})", index_count);
+        println!("{:?}", vertex_array);
         vertex_array.bind();
-        let count = if let Some(idx_buffer) = vertex_array.get_index_buffer() {
-            idx_buffer.get_count()
-        } else {
-            0
-        };
+        let count = index_count;
+        println!("done ({})", count);
 
+        println!("draw_elements");
         unsafe {
             self.0.draw_elements(glow::TRIANGLES, count as i32, glow::UNSIGNED_INT, 0);
         }
+        println!("done");
     } 
 }
 

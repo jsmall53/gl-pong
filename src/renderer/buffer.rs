@@ -37,7 +37,7 @@ pub trait IndexBuffer {
 
 
 
-
+#[derive(Debug)]
 pub struct GLVertexArray {
     gl: Rc<Context>,
     vao: NativeVertexArray,
@@ -48,6 +48,7 @@ pub struct GLVertexArray {
 
 
 
+#[derive(Debug)]
 pub struct GLVertexBuffer {
     gl: Rc<Context>,
     vbo: NativeBuffer,
@@ -56,6 +57,7 @@ pub struct GLVertexBuffer {
 
 
 
+#[derive(Debug)]
 pub struct GLIndexBuffer {
     gl: Rc<glow::Context>,
     ibo: NativeBuffer,
@@ -71,7 +73,7 @@ pub struct GLUniformBuffer {
 
 
 
-#[derive(Default)]
+#[derive(Default,Debug)]
 pub struct BufferLayout {
     stride: u32,
     elements: Vec<BufferElement>,
@@ -83,7 +85,7 @@ struct BufferLayoutIterator<'a> {
 }
 
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct BufferElement {
     name: String,
     dtype: ShaderDataType,
@@ -93,7 +95,7 @@ pub struct BufferElement {
 }
 
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub enum ShaderDataType {
     #[default]
     None,
@@ -257,15 +259,13 @@ impl<'a> Iterator for BufferLayoutIterator<'a> {
 
 impl GLVertexBuffer {
     pub fn new(gl: Rc<Context>, layout: BufferLayout) -> Self {
-        unsafe {
-            let vbo = gl.create_buffer()
-                .expect("Failed to create OpenGL Buffer");
+        let vbo = unsafe { gl.create_buffer()
+            .expect("Failed to create OpenGL Buffer") };
 
-            Self {
-                gl,
-                vbo,
-                layout,
-            }
+        Self {
+            gl,
+            vbo,
+            layout,
         }
     }
 }
@@ -311,17 +311,15 @@ impl VertexBuffer for GLVertexBuffer {
 
 impl GLVertexArray {
     pub fn new(gl: Rc<Context>) -> Self {
-        unsafe {
-            let vao = gl.create_vertex_array()
-                .expect("Failed to create OpenGL vertex array");
+        let vao = unsafe { gl.create_vertex_array()
+            .expect("Failed to create OpenGL vertex array") };
 
-            Self {
-                gl,
-                vao,
-                vertex_buffers: Vec::new(),
-                vertex_buffer_index: 0,
-                index_buffer: None,
-            }
+        Self {
+            gl,
+            vao,
+            vertex_buffers: Vec::new(),
+            vertex_buffer_index: 0,
+            index_buffer: None,
         }
     }
 }
@@ -424,6 +422,9 @@ impl VertexArray for GLVertexArray {
     }
 
     fn set_index_buffer(&mut self, buffer: GLIndexBuffer) {
+        self.bind();
+        buffer.bind();
+
         self.index_buffer = Some(buffer);
     }
 

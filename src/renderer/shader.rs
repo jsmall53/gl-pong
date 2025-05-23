@@ -30,13 +30,13 @@ impl GLShader {
         }
     }
 
-    pub fn bind(&mut self) { 
+    pub fn bind(&self) { 
         unsafe {
             self.gl.use_program(Some(self.program));
         }
     }
 
-    pub fn unbind(&mut self) {
+    pub fn unbind(&self) {
         unsafe {
             self.gl.use_program(None);
         }

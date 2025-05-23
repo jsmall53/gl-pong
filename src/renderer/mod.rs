@@ -7,6 +7,9 @@ use draw::*;
 mod shader;
 use shader::*;
 
+pub mod camera;
+use camera::*;
+
 use nalgebra_glm as glm;
 use glow;
 
@@ -24,13 +27,12 @@ pub enum RendererBackend {
 
 #[derive(Copy, Clone)]
 struct QuadVertex {
-    position: glm::Vec2,
-    color: glm::Vec3,
+    position: glm::Vec3,
+    color: glm::Vec4,
+    tex_coord: glm::Vec2,
+    tex_index: f32,
+    tiling_factor: f32,
     entity_id: i64,
-    // TODO: implement textures...
-    // tex_coord: glm::Vec2,
-    // tex_index: f32,
-    // tiling_factor: f32,
 }
 
 
@@ -38,8 +40,11 @@ struct QuadVertex {
 impl QuadVertex {
     fn new() -> Self {
         Self {
-            position: glm::Vec2::zeros(),
-            color: glm::Vec3::zeros(),
+            position: glm::Vec3::zeros(),
+            color: glm::Vec4::zeros(),
+            tex_coord: glm::Vec2::zeros(),
+            tex_index: 0.0,
+            tiling_factor: 1.0,
             entity_id: -1,
         }
     }
@@ -53,11 +58,18 @@ struct CameraData {
 }
 
 
-
-const MAX_QUADS: usize = 20000;
-const MAX_VERTICES: usize = MAX_QUADS * 4;
+const QUAD_VERTEX_COUNT: usize = 4;
+const MAX_QUADS: usize = 20;
+const MAX_VERTICES: usize = MAX_QUADS * QUAD_VERTEX_COUNT;
 const MAX_INDICES: usize = MAX_QUADS * 6;
 const MAX_TEXTURE_SLOTS: usize = 32;
+
+const TEXTURE_COORDS: [glm::Vec2; 4] = [
+    glm::Vec2::new(0.0, 0.0),
+    glm::Vec2::new(1.0, 0.0),
+    glm::Vec2::new(1.0, 1.0),
+    glm::Vec2::new(0.0, 1.0),
+];
 
 struct Renderer2DData {
     gl: Rc<glow::Context>,
@@ -80,10 +92,10 @@ struct Renderer2DData {
     // // text_shader: i32,
 
     quad_index_count: u32,
-    quad_vertex_buffer_base: [QuadVertex; MAX_VERTICES],
+    quad_vertex_buffer_base: Box<[QuadVertex; MAX_VERTICES]>,
     quad_vertex_buffer_idx: usize, // index position of current quad_vertex_buffer_base
-
     quad_vertex_positions: [glm::Vec4; 4], 
+    quad_shader: GLShader,
 
     camera_uniform_buffer: Box<GLUniformBuffer>,
     camera_data: CameraData,
@@ -107,7 +119,8 @@ pub struct Renderer2D {
 
 
 impl Renderer2D {
-    pub fn new(gl: glow::Context) -> Self {
+    pub fn new(gl: glow::Context, width: i32, height: i32) -> Self {
+
         let quad_layout = BufferLayoutBuilder::new()
             .element(BufferElement::new(ShaderDataType::Float3, "a_Position", false))
             .element(BufferElement::new(ShaderDataType::Float4, "a_Color", false))
@@ -154,6 +167,8 @@ impl Renderer2D {
 
         let quad_shader = GLShader::new(gl_rc.clone(), "quad_shader", VERTEX_SRC, FRAGMENT_SRC);
 
+        let camera_uniform_buffer = GLUniformBuffer::new(gl_rc.clone(),0, 0);
+
         let data = Box::new(Renderer2DData {
             gl: gl_rc.clone(),
             quad_vertex_array: Box::new(quad_vertex_array),
@@ -161,9 +176,17 @@ impl Renderer2D {
             quad_index_count: 0,
             quad_vertex_positions: quad_vertices,
             quad_vertex_buffer_idx: 0,
-            quad_vertex_buffer_base: [QuadVertex::new(); MAX_VERTICES],
+            quad_vertex_buffer_base: Box::new([QuadVertex::new(); MAX_VERTICES]),
+            quad_shader,
+            camera_data: CameraData { view_projection: glm::Mat4::identity() },
+            camera_uniform_buffer: Box::new(camera_uniform_buffer),
         });
-        let backend = RendererBackend::OpenGL(OpenGLRendererAPI::new(gl_rc));
+
+        let ogl = OpenGLRendererAPI::new(gl_rc);
+        ogl.set_viewport(0, 0, width, height);
+        ogl.set_clear_color(&glm::Vec4::new(0.2, 0.5, 0.2, 1.0));
+        let backend = RendererBackend::OpenGL(ogl);
+
         let stats = RenderStats::new();
         Self {
             data,
@@ -176,21 +199,23 @@ impl Renderer2D {
         println!("{}", self.stats);
     }
 
-    pub fn begin_scene(&mut self) {
-        self.data.camera_data.view_projection = glm::Mat4::identity();
-        let bytes: &[u8] = unsafe { std::slice::from_raw_parts(
-            &self.data.camera_data as *const _ as *const u8,
-            std::mem::size_of::<CameraData>(),
-        ) };
-        self.data.camera_uniform_buffer.set_data(
-            &bytes, std::mem::size_of::<CameraData>());
-
-
+    pub fn begin_scene(&mut self, camera: &OrthographicCamera) {
+        self.clear_color();
+        self.set_camera_data(camera);
         self.start_batch();
     }
 
     pub fn end_scene(&mut self) {
         self.flush();
+    }
+
+    pub fn resize(&mut self, width: i32, height: i32) {
+        match &self.backend {
+            RendererBackend::OpenGL(ogl) => {
+                ogl.set_viewport(0, 0, width, height);
+            }
+            _ => { },
+        }
     }
 
     fn start_batch(&mut self) {
@@ -205,19 +230,20 @@ impl Renderer2D {
 
     fn flush(&mut self) {
         if self.data.quad_index_count > 0 {
-            unsafe {
-                let bytes: &[u8] = core::slice::from_raw_parts(
-                    self.data.quad_vertex_buffer_base[0..self.data.quad_vertex_buffer_idx].as_ptr() as *const u8,
-                    self.data.quad_vertex_buffer_idx * core::mem::size_of::<QuadVertex>()
-                );
-                self.data.quad_vertex_buffer.set_data(bytes);
-            }
+            let bytes: &[u8] = unsafe { core::slice::from_raw_parts(
+                self.data.quad_vertex_buffer_base[0..self.data.quad_vertex_buffer_idx].as_ptr() as *const u8,
+                self.data.quad_vertex_buffer_idx * core::mem::size_of::<QuadVertex>()
+            ) };
+            println!("quad vertex bytes: {}", bytes.len());
+            self.data.quad_vertex_buffer.set_data(bytes);
 
             // TODO: bind textures here
             
-            // TODO: Bind shader?
+            self.data.quad_shader.bind();
 
+            println!("draw indexed");
             self.draw_indexed();
+            println!("done.");
             self.stats.increment_draw_calls();
         }
 
@@ -226,8 +252,40 @@ impl Renderer2D {
         // TODO: text
     }
 
-    pub fn draw_quad(&mut self) {
+    pub fn draw_quad_ez(&mut self, position: &glm::Vec3, size: &glm::Vec2, color: glm::Vec4) {
+        let mut ones = glm::Mat4::zeros();
+        ones.fill(1.0f32);
+        let translate = glm::translate(&ones, position);
+        let scale = glm::scale(&ones, &glm::vec2_to_vec3(size));
+        let transform = translate * scale;
+        self.draw_quad(&transform, color, -1);
+    }
 
+    pub fn draw_quad(&mut self, transform: &glm::Mat4, color: glm::Vec4, entity_id: i64) {
+        if self.data.quad_index_count >= MAX_INDICES as u32 {
+            self.next_batch();
+        }
+
+
+        for i in (0..QUAD_VERTEX_COUNT) {
+            let vertex: &mut QuadVertex = &mut self.data.quad_vertex_buffer_base[
+                self.data.quad_vertex_buffer_idx
+            ];
+            
+            vertex.position = glm::vec4_to_vec3(
+                &(transform * &self.data.quad_vertex_positions[i])
+            );
+            vertex.color = color;
+            vertex.tex_index = 0.0;
+            vertex.tex_coord = TEXTURE_COORDS[i];
+            vertex.tiling_factor = 1.0;
+            vertex.entity_id = entity_id;
+
+            self.data.quad_vertex_buffer_idx += 1;
+        }
+
+        self.data.quad_index_count += 6;
+        self.stats.increment_quad_count();
     }
 
     fn draw_indexed(&self) {
@@ -237,6 +295,27 @@ impl Renderer2D {
             },
             _ => { panic!("Unsupported renderer backend") },
         }
+    }
+
+    fn clear_color(&self) {
+        match &self.backend {
+            RendererBackend::OpenGL(ogl) => {
+                ogl.set_clear_color(&glm::Vec4::new(0.2, 0.5, 0.2, 1.0));
+            },
+            _ => { },
+        }
+    }
+
+    fn set_camera_data(&mut self, camera: &OrthographicCamera) {
+        // TODO: get rid of this clone.
+        self.data.camera_data.view_projection = camera.get_view_projection().clone();
+        let bytes: &[u8] = unsafe { std::slice::from_raw_parts(
+            &self.data.camera_data as *const _ as *const u8,
+            std::mem::size_of::<CameraData>(),
+        ) };
+        self.data.camera_uniform_buffer.set_data(
+            &bytes,
+            std::mem::size_of::<CameraData>());
     }
 }
 
