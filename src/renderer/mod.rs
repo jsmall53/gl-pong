@@ -11,6 +11,7 @@ pub mod camera;
 use camera::*;
 
 pub mod texture;
+use texture::*;
 
 use nalgebra_glm as glm;
 use glow;
