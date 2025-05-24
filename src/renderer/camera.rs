@@ -108,42 +108,27 @@ impl OrthographicCameraController {
     pub fn update(&mut self, delta: f32, input: &InputState) {
         let mut new_position = self.camera.position;
 
-        if (input.is_key_pressed(&KeyKind::ArrowLeft)) {
-            new_position.x -= (
-                self.camera.rotation.to_radians().cos() * 
-                self.camera_translation_speed * delta
-            );
-            new_position.y -= (
-                self.camera.rotation.to_radians().sin() * 
-                self.camera_translation_speed * delta
-            );
-        } else if (input.is_key_pressed(&KeyKind::ArrowRight)) {
-            new_position.x += (
-                self.camera.rotation.to_radians().cos() * 
-                self.camera_translation_speed * delta
-            );
-            new_position.y += (
-                self.camera.rotation.to_radians().sin() * 
-                self.camera_translation_speed * delta
-            );
-        } else if (input.is_key_pressed(&KeyKind::ArrowUp)) {
-            new_position.x += (
+        if input.is_key_pressed(&KeyKind::ArrowLeft) {
+            new_position.x -= self.camera.rotation.to_radians().cos() * 
+                self.camera_translation_speed * delta;
+            new_position.y -= self.camera.rotation.to_radians().sin() * 
+                self.camera_translation_speed * delta;
+        } else if input.is_key_pressed(&KeyKind::ArrowRight) {
+            new_position.x += self.camera.rotation.to_radians().cos() * 
+                self.camera_translation_speed * delta;
+            new_position.y += self.camera.rotation.to_radians().sin() * 
+                self.camera_translation_speed * delta;
+        } else if input.is_key_pressed(&KeyKind::ArrowUp) {
+            new_position.x += 
                 -(self.camera.rotation.to_radians().sin()) * 
-                self.camera_translation_speed * delta
-            );
-            new_position.y += (
-                self.camera.rotation.to_radians().cos() * 
-                self.camera_translation_speed * delta
-            );
-        } else if (input.is_key_pressed(&KeyKind::ArrowDown)) {
-            new_position.x -= (
-                -(self.camera.rotation.to_radians().sin()) * 
-                self.camera_translation_speed * delta
-            );
-            new_position.y -= (
-                self.camera.rotation.to_radians().cos() * 
-                self.camera_translation_speed * delta
-            );
+                self.camera_translation_speed * delta;
+            new_position.y += self.camera.rotation.to_radians().cos() * 
+                self.camera_translation_speed * delta;
+        } else if input.is_key_pressed(&KeyKind::ArrowDown) {
+            new_position.x -= -(self.camera.rotation.to_radians().sin()) * 
+                self.camera_translation_speed * delta;
+            new_position.y -= self.camera.rotation.to_radians().cos() * 
+                self.camera_translation_speed * delta;
         }
 
 
