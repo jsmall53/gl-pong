@@ -59,7 +59,7 @@ pub struct GLVertexBuffer {
 
 #[derive(Debug)]
 pub struct GLIndexBuffer {
-    gl: Rc<glow::Context>,
+    gl: Rc<Context>,
     ibo: NativeBuffer,
     count: usize,
 }
@@ -67,7 +67,7 @@ pub struct GLIndexBuffer {
 
 
 pub struct GLUniformBuffer {
-    gl: Rc<glow::Context>,
+    gl: Rc<Context>,
     buffer: NativeBuffer,
     binding: u32,
 }
@@ -264,7 +264,7 @@ impl GLVertexBuffer {
             let vbo =  gl.create_buffer()
                 .expect("Failed to create OpenGL Buffer");
             gl.bind_buffer(ARRAY_BUFFER, Some(vbo));
-            gl.buffer_data_size(ARRAY_BUFFER, size, glow::DYNAMIC_DRAW);
+            gl.buffer_data_size(ARRAY_BUFFER, size, DYNAMIC_DRAW);
             Self {
                 gl,
                 vbo,
@@ -446,7 +446,7 @@ impl VertexArray for GLVertexArray {
 
 
 impl GLIndexBuffer {
-    pub fn new(gl: Rc<glow::Context>, indices: &[u32]) -> Self {
+    pub fn new(gl: Rc<Context>, indices: &[u32]) -> Self {
         unsafe {
             let ibo = gl.create_buffer()
                 .expect("Failed to create opengl index buffer.");
@@ -503,7 +503,7 @@ impl Drop for GLIndexBuffer {
 
 
 impl GLUniformBuffer {
-    pub fn new(gl: Rc<glow::Context>, size: usize, binding: u32) -> Self {
+    pub fn new(gl: Rc<Context>, size: usize, binding: u32) -> Self {
         unsafe {
             let buffer = gl.create_buffer()
                 .expect("Failed to create opengl buffer");

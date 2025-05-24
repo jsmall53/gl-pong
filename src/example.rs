@@ -1,4 +1,4 @@
-use crate::renderer::{camera::OrthographicCameraController, *};
+use crate::renderer::*;
 use crate::core::input::{InputController,InputState};
 use crate::core::FrameCounter;
 
@@ -27,7 +27,7 @@ impl Example2D {
             gl.enable(PROGRAM_POINT_SIZE);
             gl.viewport(0, 0, width, height);
             let renderer = Renderer2D::new(gl, width, height);
-            let camera = OrthographicCameraController::new(width as f32 / height as f32, false);
+            let camera = camera::OrthographicCameraController::new(width as f32 / height as f32, false);
             Self {
                 renderer,
                 camera, 

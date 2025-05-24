@@ -10,6 +10,8 @@ use shader::*;
 pub mod camera;
 use camera::*;
 
+pub mod texture;
+
 use nalgebra_glm as glm;
 use glow;
 
@@ -297,6 +299,16 @@ impl Renderer2D {
         }
         self.data.quad_index_count += 6;
         self.stats.increment_quad_count();
+    }
+
+    pub fn draw_quad_texture(&mut self, transform: &glm::Mat4, texture: &GLTexture) {
+        if self.data.quad_index_count >= MAX_INDICES as u32 {
+            self.next_batch();
+        }
+
+        for i in (0..QUAD_VERTEX_COUNT) {
+            todo!();
+        }
     }
 
     fn draw_indexed(&self) {

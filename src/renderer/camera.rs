@@ -133,7 +133,7 @@ impl OrthographicCameraController {
 
 
         self.camera.set_position(new_position);
-        // self.camera_translation_speed = self.zoom_level;
+        self.camera_translation_speed = self.zoom_level;
     }
 
     pub fn resize(&mut self, width: f32, height: f32) {
@@ -145,5 +145,4 @@ impl OrthographicCameraController {
             self.zoom_level);
     }
 }
-
 
