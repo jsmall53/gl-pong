@@ -1,11 +1,6 @@
 use crate::renderer::{camera::OrthographicCameraController, *};
-// use crate::physics::*;
-// use crate::input::{InputController, InputState, PongKey, KeyMap};
-
-// use std::collections::HashMap;
-// use std::time::{Instant, Duration};
-// use std::ops::Deref;
-// use std::cell::RefCell;
+use crate::core::input::{InputController,InputState};
+use crate::core::FrameCounter;
 
 use winit::event::KeyEvent;
 use glow::*;
@@ -17,6 +12,8 @@ use nalgebra_glm as glm;
 pub struct Example2D {
     renderer: Renderer2D,
     camera: camera::OrthographicCameraController,
+    input: InputController,
+    frame_counter: FrameCounter,
 }
 
 
@@ -34,6 +31,8 @@ impl Example2D {
             Self {
                 renderer,
                 camera, 
+                input: InputController::new(),
+                frame_counter: FrameCounter::new(),
             }
         }
     }
@@ -43,14 +42,41 @@ impl Example2D {
     }
 
     pub fn update(&mut self) {
-        
+        // Always handle frame counter and input at the beginning of update.
+        let delta = self.update_frames();
+        let input_state = self.input.state();
+        //****************************************
+
+        self.camera.update(delta, &input_state);
         self.renderer.begin_scene(self.camera.get_camera());
 
-        let pos = glm::Vec3::new(0.0, 0.0, 0.5);
-        let size = glm::Vec2::new(0.5, 0.25);
+        let mut pos = glm::Vec3::new(-0.5, -0.5, 0.5);
+        let size = glm::Vec2::new(0.8, 0.4);
         let color = glm::Vec4::new(0.8, 0.2, 0.2, 1.0);
         self.renderer.draw_quad_ez(&pos, &size, color);
+
+        pos.x = 0.5;
+        pos.y = 0.5;
+        self.renderer.draw_quad_ez(&pos, &size, color);
+
+        pos.x = 0.0;
+        pos.y = 0.0;
+        self.renderer.draw_quad_ez(&pos, &size, color);
+ 
         self.renderer.end_scene();
+    }
+
+    pub fn handle_keyboard(&mut self, event: KeyEvent) {
+        self.input.handle_keyboard(event)
+    }
+
+    fn update_frames(&mut self) -> f32 {
+        let delta = self.frame_counter.increment();
+        match self.frame_counter.fps() {
+            Some(fps) => println!("{:.2} fps", fps),
+            None => { }
+        }
+        delta
     }
 }
 

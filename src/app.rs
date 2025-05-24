@@ -169,6 +169,9 @@ impl ApplicationHandler for App {
                         if !DEBUG_RENDER {
                             let game = self.game.as_mut().unwrap();
                             game.handle_keyboard(event); 
+                        } else {
+                            let example = self.example_2D.as_mut().unwrap();
+                            example.handle_keyboard(event);
                         }
                     }
                 }

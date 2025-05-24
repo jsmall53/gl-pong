@@ -1,7 +1,8 @@
 // pub mod renderer;
 use crate::renderer::*;
 use crate::physics::*;
-use crate::input::{InputController, InputState, PongKey, KeyMap};
+use crate::core::FrameCounter;
+use crate::core::input::{InputController, InputState, KeyKind, KeyMap};
 
 use std::collections::HashMap;
 use std::time::{Instant, Duration};
@@ -148,14 +149,14 @@ impl GameData {
         let left_keymap = match players {
             1 => {
                 Some(KeyMap {
-                    move_down: vec![PongKey::ArrowDown, PongKey::A, PongKey::J],
-                    move_up: vec![PongKey::ArrowUp, PongKey::Q, PongKey::K],
+                    move_down: vec![KeyKind::ArrowDown, KeyKind::A, KeyKind::J],
+                    move_up: vec![KeyKind::ArrowUp, KeyKind::Q, KeyKind::K],
                 })
             },
             2 => { 
                 Some(KeyMap {
-                    move_down: vec![PongKey::A, PongKey::J],
-                    move_up: vec![PongKey::Q, PongKey::K],
+                    move_down: vec![KeyKind::A, KeyKind::J],
+                    move_up: vec![KeyKind::Q, KeyKind::K],
                 })
             },
             _ => None
@@ -164,8 +165,8 @@ impl GameData {
         let right_keymap = match players {
             2 => {
                 Some(KeyMap {
-                    move_down: vec![PongKey::ArrowDown],
-                    move_up: vec![PongKey::ArrowUp],
+                    move_down: vec![KeyKind::ArrowDown],
+                    move_up: vec![KeyKind::ArrowUp],
                 })
             }
             _ => None,
@@ -250,14 +251,14 @@ impl GameData {
                     player.update(delta, &input, &self.ball);
                 }
 
-                if input.is_key_pressed(&PongKey::Space) {
+                if input.is_key_pressed(&KeyKind::Space) {
                     self.pause();
                     return;
                 }
             },
             GameState::Pause => 
             { 
-                if input.is_key_pressed(&PongKey::Enter) {
+                if input.is_key_pressed(&KeyKind::Enter) {
                     self.unpause();
                 }
             },
@@ -928,41 +929,7 @@ void main() {
 }
 \0";
 
-pub struct FrameCounter {
-    begin: Instant, // when was this started.
-    frame_count: u64,
-    last_frame_time: Instant,
-    last_update_time: Instant,
-    last_update_val: f64,
-}
 
-impl FrameCounter {
-    pub fn new() -> Self {
-        FrameCounter {
-            begin: Instant::now(),
-            frame_count: 0,
-            last_frame_time: Instant::now(),
-            last_update_time: Instant::now(),
-            last_update_val: 0.0f64,
-        }
-    }
-
-    pub fn increment(&mut self) -> f32 {
-        let delta = self.last_frame_time.elapsed().as_secs_f32();
-        self.frame_count += 1;
-        self.last_frame_time = Instant::now();
-        delta
-    }
-
-    pub fn fps(&mut self) -> Option<f64> {
-        if self.last_update_time.elapsed().as_secs() > 2 {
-            self.last_update_val = self.frame_count as f64/ self.begin.elapsed().as_secs() as f64;
-            self.last_update_time = Instant::now();
-            return Some(self.last_update_val);
-        }
-        None
-    }
-}
 
 
 const PONG_SHADER_SOURCE: &str = "

@@ -4,8 +4,7 @@ use nalgebra_glm as glm;
 
 
 
-
-pub enum PongKey {
+pub enum KeyKind {
     Space,
     ArrowUp,
     ArrowDown,
@@ -14,6 +13,11 @@ pub enum PongKey {
     Q,
     A,
     Enter,
+    ArrowLeft,
+    ArrowRight,
+    W,
+    S,
+    D,
 }
 
 
@@ -27,9 +31,11 @@ const KEY_J: u32            = 1 << 4;
 const KEY_Q: u32            = 1 << 5;
 const KEY_A: u32            = 1 << 6;
 const KEY_ENTER: u32        = 1 << 7;
-
-const MASK: u32             = 0xFFFF;
-
+const KEY_W: u32            = 1 << 8;
+const KEY_S: u32            = 1 << 9;
+const KEY_D: u32            = 1 << 10;
+const KEY_ARROW_LEFT: u32   = 1 << 11;
+const KEY_ARROW_RIGHT: u32  = 1 << 12;
 
 
 
@@ -38,16 +44,24 @@ fn mask_from_winit_key(key: winit::keyboard::Key) -> u32 {
         Key::Named(NamedKey::Space) => { KEY_SPACE },
         Key::Named(NamedKey::ArrowUp) => { KEY_ARROW_UP },
         Key::Named(NamedKey::ArrowDown) => { KEY_ARROW_DOWN },
+        Key::Named(NamedKey::ArrowLeft) => { KEY_ARROW_LEFT },
+        Key::Named(NamedKey::ArrowRight) => { KEY_ARROW_RIGHT },
         Key::Named(NamedKey::Enter) => { KEY_ENTER },
         Key::Character(character) => {
             if character == "k" || character == "K" {
                 KEY_K
-            } else if character == "j" || character == "J" {
+            } else if character == "j" {
                 KEY_J
-            } else if character == "q" || character == "Q" {
+            } else if character == "q" {
                 KEY_Q
-            } else if character == "a" || character == "A" {
+            } else if character == "a" {
                 KEY_A
+            } else if character == "w" {
+                KEY_W
+            } else if character == "s" {
+                KEY_S
+            } else if character == "d" {
+                KEY_D
             } else {
                 0
             }
@@ -56,16 +70,21 @@ fn mask_from_winit_key(key: winit::keyboard::Key) -> u32 {
     }
 }
 
-fn mask_from_pong_key(key: &PongKey) -> u32 {
+fn mask_from_key_kind(key: &KeyKind) -> u32 {
     match key {
-        PongKey::Space => { KEY_SPACE },
-        PongKey::ArrowUp => { KEY_ARROW_UP },
-        PongKey::ArrowDown => { KEY_ARROW_DOWN },
-        PongKey::K => { KEY_K },
-        PongKey::J => { KEY_J },
-        PongKey::Q => { KEY_Q },
-        PongKey::A => { KEY_A },
-        PongKey::Enter => { KEY_ENTER },
+        KeyKind::Space => { KEY_SPACE },
+        KeyKind::ArrowUp => { KEY_ARROW_UP },
+        KeyKind::ArrowDown => { KEY_ARROW_DOWN },
+        KeyKind::K => { KEY_K },
+        KeyKind::J => { KEY_J },
+        KeyKind::Q => { KEY_Q },
+        KeyKind::A => { KEY_A },
+        KeyKind::Enter => { KEY_ENTER },
+        KeyKind::ArrowLeft => { KEY_ARROW_LEFT },
+        KeyKind::ArrowRight => { KEY_ARROW_RIGHT },
+        KeyKind::W => { KEY_W },
+        KeyKind::S => { KEY_S },
+        KeyKind::D => { KEY_D },
     }
 }
 
@@ -73,8 +92,8 @@ fn mask_from_pong_key(key: &PongKey) -> u32 {
 
 
 pub struct KeyMap {
-    pub move_up: Vec<PongKey>,
-    pub move_down: Vec<PongKey>,
+    pub move_up: Vec<KeyKind>,
+    pub move_down: Vec<KeyKind>,
 }
 
 
@@ -159,12 +178,12 @@ impl InputState {
         }
     }
 
-    pub fn is_key_pressed(&self, key: &PongKey) -> bool {
-        let mask = mask_from_pong_key(key);
+    pub fn is_key_pressed(&self, key: &KeyKind) -> bool {
+        let mask = mask_from_key_kind(key);
         self.key_state & mask > 0
     }
 
-    pub fn any_pressed(&self, keys: &[PongKey]) -> bool {
+    pub fn any_pressed(&self, keys: &[KeyKind]) -> bool {
         for key in keys {
             if self.is_key_pressed(key) {
                 return true;

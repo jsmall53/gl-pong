@@ -1,8 +1,8 @@
+pub mod core;
 pub mod app;
 pub mod renderer;
 pub mod game;
 pub mod physics;
-pub mod input;
 
 use crate::app::App;
 
