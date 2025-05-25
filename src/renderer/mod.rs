@@ -20,7 +20,6 @@ use std::rc::Rc;
 use std::fmt;
 
 
-
 pub enum RendererBackend {
     OpenGL(OpenGLRendererAPI),
     None,
@@ -112,6 +111,9 @@ struct Renderer2DData {
     quad_vertex_positions: [glm::Vec4; 4], 
     quad_shader: GLShader,
 
+    texture_slots: Vec<GLTexture>,
+    texture_slot_idx: usize, // TODO: 0 = white_texture???
+
     camera_uniform_buffer: Box<GLUniformBuffer>,
     camera_data: CameraData,
 }
@@ -191,6 +193,7 @@ impl Renderer2D {
             std::mem::size_of::<CameraData>(), 
             0);
 
+
         let data = Box::new(Renderer2DData {
             gl: gl_rc.clone(),
             quad_vertex_array: Box::new(quad_vertex_array),
@@ -200,6 +203,8 @@ impl Renderer2D {
             quad_vertex_buffer_idx: 0,
             quad_vertex_buffer_base: Box::new([QuadVertex::new(); MAX_VERTICES]),
             quad_shader,
+            texture_slots: Vec::with_capacity(MAX_TEXTURE_SLOTS),
+            texture_slot_idx: 0,
             camera_data: CameraData { view_projection: glm::Mat4::identity() },
             camera_uniform_buffer: Box::new(camera_uniform_buffer),
         });
@@ -243,6 +248,7 @@ impl Renderer2D {
     fn start_batch(&mut self) {
         self.data.quad_index_count = 0;
         self.data.quad_vertex_buffer_idx = 0;
+        self.data.texture_slot_idx = 1;
     }
 
     fn next_batch(&mut self) {
@@ -257,7 +263,10 @@ impl Renderer2D {
             );
             self.data.quad_vertex_buffer.set_data(bytes);
 
-            // TODO: bind textures here
+            for i in 0..self.data.texture_slots.len() {
+                let tex = &self.data.texture_slots[i];
+                tex.bind(i as u32);
+            }
             
             self.data.quad_shader.bind();
 
@@ -302,14 +311,30 @@ impl Renderer2D {
         self.stats.increment_quad_count();
     }
 
-    pub fn draw_quad_texture(&mut self, transform: &glm::Mat4, texture: &GLTexture) {
+    pub fn draw_quad_texture(&mut self, transform: &glm::Mat4, texture: &GLTexture, tint_color: &glm::Vec4) {
         if self.data.quad_index_count >= MAX_INDICES as u32 {
             self.next_batch();
         }
-
+        // TODO: potentially cache the texture?
         for i in (0..QUAD_VERTEX_COUNT) {
-            todo!();
+            let vertex: &mut QuadVertex = &mut self.data.quad_vertex_buffer_base[
+                self.data.quad_vertex_buffer_idx
+            ];
+            let position = &(transform * &self.data.quad_vertex_positions[i]);
+            vertex.position = glm::vec4_to_vec3(
+                position
+            );
+            vertex.color = tint_color.clone();
+            vertex.tex_coord = TEXTURE_COORDS[i];
+            vertex.tex_index = 1.0;
+            vertex.tiling_factor = 1.0;
+            vertex.entity_id = -1;
+
+            self.data.quad_vertex_buffer_idx += 1;
         }
+
+        self.data.quad_index_count += 6;
+        self.stats.increment_quad_count();
     }
 
     fn draw_indexed(&self) {
