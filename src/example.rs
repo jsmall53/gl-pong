@@ -1,3 +1,4 @@
+use crate::renderer::texture::GLTexture;
 use crate::renderer::*;
 use crate::core::input::{InputController,InputState};
 use crate::core::FrameCounter;
@@ -28,6 +29,7 @@ impl Example2D {
             gl.viewport(0, 0, width, height);
             let renderer = Renderer2D::new(gl, width, height);
             let camera = camera::OrthographicCameraController::new(width as f32 / height as f32, false);
+            let checkerboard = GLTexture::new("resources/Checkerboard.png");
             Self {
                 renderer,
                 camera, 

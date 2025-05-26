@@ -16,6 +16,7 @@ use texture::*;
 use nalgebra_glm as glm;
 use glow;
 
+use std::error::Error;
 use std::rc::Rc;
 use std::fmt;
 
@@ -335,6 +336,11 @@ impl Renderer2D {
 
         self.data.quad_index_count += 6;
         self.stats.increment_quad_count();
+    }
+
+    pub fn load_texture(&self, path: &str) -> Result<GLTexture, Box<dyn Error>> {
+        todo!();
+        // let texture = GLTexture::new(self.gl, path)
     }
 
     fn draw_indexed(&self) {
